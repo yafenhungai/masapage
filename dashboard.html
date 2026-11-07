@@ -1,0 +1,2772 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>MyInvest 投資管理儀表板</title>
+  <!-- 防閃爍 (Anti-FOUC) 字級設定讀取 -->
+  <script>
+    (function() {
+      const savedLevel = localStorage.getItem('myinvest_font_level') || '1';
+      document.documentElement.setAttribute('data-font-level', savedLevel);
+    })();
+  </script>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            twred: '#f87171',    // 台股紅（獲利）
+            twgreen: '#34d399',  // 台股綠（回檔）
+          },
+          screens: {
+            'xs': '420px',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    html, body {
+      overflow-x: hidden;
+      width: 100%;
+    }
+    body {
+      font-size: 1rem;
+      line-height: 1.5;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ==================== 5 段字級縮放 (100% ~ 150%) ==================== */
+    html[data-font-level="1"] { font-size: 16px; }  /* 100.0% 預設標準 */
+    html[data-font-level="2"] { font-size: 18px; }  /* 112.5% (+12.5%) */
+    html[data-font-level="3"] { font-size: 20px; }  /* 125.0% (+25.0%) */
+    html[data-font-level="4"] { font-size: 22px; }  /* 137.5% (+37.5%) */
+    html[data-font-level="5"] { font-size: 24px; }  /* 150.0% (+50.0%) */
+
+    /* 補償站內固定像素徽章與小標籤 (text-[11px] / text-[10px]) */
+    html[data-font-level="1"] .text-\[11px\] { font-size: 11px; }
+    html[data-font-level="2"] .text-\[11px\] { font-size: 12.5px; }
+    html[data-font-level="3"] .text-\[11px\] { font-size: 13.8px; }
+    html[data-font-level="4"] .text-\[11px\] { font-size: 15px; }
+    html[data-font-level="5"] .text-\[11px\] { font-size: 16.5px; }
+
+    html[data-font-level="1"] .text-\[10px\] { font-size: 10px; }
+    html[data-font-level="2"] .text-\[10px\] { font-size: 11.2px; }
+    html[data-font-level="3"] .text-\[10px\] { font-size: 12.5px; }
+    html[data-font-level="4"] .text-\[10px\] { font-size: 13.8px; }
+    html[data-font-level="5"] .text-\[10px\] { font-size: 15px; }
+
+    /* 隱藏滾動條但保留滾動功能 */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0b1120; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    .tab-active {
+      border-bottom: 2px solid #60a5fa;
+      color: #93c5fd;
+      font-weight: 700;
+      background-color: rgba(59, 130, 246, 0.15);
+    }
+    .badge-etf { background-color: rgba(59, 130, 246, 0.2); color: #bfdbfe; border: 1px solid rgba(59, 130, 246, 0.4); }
+    .badge-stock { background-color: rgba(245, 158, 11, 0.2); color: #fef08a; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .badge-drip { background-color: rgba(16, 185, 129, 0.2); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.4); }
+
+    /* 表格凍結欄位效果 */
+    .sticky-col {
+      position: sticky;
+      left: 0;
+      z-index: 10;
+      background-color: #0f172a;
+    }
+    .sticky-col-header {
+      position: sticky;
+      left: 0;
+      z-index: 20;
+      background-color: #1e293b;
+    }
+    .shadow-col-edge {
+      box-shadow: 4px 0 8px -2px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-blue-600 selection:text-white pb-16">
+
+  <!-- ==================== 響應式頂部導航列 (支援手機/電腦) ==================== -->
+  <header class="border-b border-slate-800 bg-slate-900/95 backdrop-blur sticky top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+      
+      <!-- 電腦與手機共用 Header 本體 -->
+      <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center py-2.5 sm:py-3 gap-2">
+        
+        <!-- 品牌區塊 (在手機上更緊湊) -->
+        <div class="flex items-center justify-between w-full md:w-auto">
+          <div class="flex items-center space-x-2.5 sm:space-x-3">
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-emerald-500 flex items-center justify-center shadow-lg shadow-blue-500/20 shrink-0">
+              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h1 class="font-extrabold text-base sm:text-lg text-white tracking-wide">MyInvest 投資管理儀表板</h1>
+                <span class="md:hidden text-[11px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-400/30 font-mono">手機版</span>
+                <!-- 市場即時狀態徽章 (開盤/收盤/休市狀態即時動態更新) -->
+                <span id="marketStatusBadge" class="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-slate-800 text-slate-300 border border-slate-700 transition-all">
+                  <span id="marketStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+                  <span id="marketStatusText">偵測市場狀態中...</span>
+                </span>
+              </div>
+              <p class="text-[11px] sm:text-xs text-slate-300 mt-0.5 flex items-center flex-wrap gap-x-2 gap-y-0.5">
+                <span>基準日：<span id="headerBaseDate" class="text-blue-300 font-bold">2026/11/06</span></span>
+                <span>• 扣款日：<span class="text-emerald-300 font-bold">每月 13 號</span></span>
+                <span>• 最後同步：<span id="headerSyncTime" class="text-emerald-400 font-mono font-bold">--:--:--</span></span>
+                <span id="autoRefreshNotice" class="text-slate-400 hidden lg:inline">（開盤 09:00-13:30 每 2 分鐘自動更新）</span>
+              </p>
+            </div>
+          </div>
+
+          <!-- 手機版右上角操作群組 (字級切換 + 刷新行情) -->
+          <div class="md:hidden flex items-center space-x-1.5">
+            <button onclick="toggleFontSizeModal(true)" title="調整字級大小 (100% ~ 150%)" class="p-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 hover:text-white active:scale-95 flex items-center justify-center font-bold text-xs">
+              <span class="tracking-tighter text-blue-400 font-black">Aa</span>
+            </button>
+            <button onclick="refreshPrices({ isManual: true })" id="mobileRefreshBtn" title="自動抓取最新收盤價" class="p-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 hover:text-white active:scale-95 flex items-center justify-center">
+              <svg id="mobileRefreshIcon" class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 電腦版右側操作 (分頁導航 + Aa字級按鈕 + 刷新行情) -->
+        <div class="flex items-center justify-between md:justify-end space-x-1 sm:space-x-2 w-full md:w-auto">
+          <!-- 頁面四大分頁切換按鈕 (手機端支援平滑水平滾動) -->
+          <nav class="flex space-x-1 sm:space-x-1.5 overflow-x-auto no-scrollbar py-1">
+            <button onclick="switchTab('tab1')" id="nav-tab1" class="tab-btn px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all tab-active whitespace-nowrap shrink-0">
+              📊 庫存與存錢
+            </button>
+            <button onclick="switchTab('tab2')" id="nav-tab2" class="tab-btn px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-all whitespace-nowrap shrink-0">
+              📅 配息與實領
+            </button>
+            <button onclick="switchTab('tab3')" id="nav-tab3" class="tab-btn px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-all whitespace-nowrap shrink-0">
+              🧾 稅務與平準金
+            </button>
+            <button onclick="switchTab('tab4')" id="nav-tab4" class="tab-btn px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-all whitespace-nowrap shrink-0">
+              💡 健檢與加碼
+            </button>
+          </nav>
+
+          <!-- 電腦版專屬 Aa 字級切換按鈕 -->
+          <button onclick="toggleFontSizeModal(true)" title="調整字級大小 (100% ~ 150%)" class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold text-slate-300 bg-slate-800/90 hover:bg-slate-700/80 hover:text-white border border-slate-700/80 transition-all active:scale-95 shrink-0">
+            <span class="font-black tracking-tighter text-blue-400">Aa</span>
+            <span>字級</span>
+            <span id="desktopFontLevelBadge" class="text-[10px] px-1 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">100%</span>
+          </button>
+
+          <!-- 電腦版專屬刷新按鈕 -->
+          <button onclick="refreshPrices({ isManual: true })" id="desktopRefreshBtn" title="自動抓取最新收盤價" class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold text-slate-200 bg-emerald-600/20 hover:bg-emerald-600/30 hover:text-white border border-emerald-500/40 transition-all active:scale-95 shrink-0">
+            <svg id="desktopRefreshIcon" class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            <span>刷新</span>
+          </button>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== 字級大小調整懸浮面板 (Popover/Modal) ==================== -->
+  <div id="fontSizeModal" class="hidden fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-20 px-3 bg-black/60 backdrop-blur-sm transition-all">
+    <div id="fontSizeModalCard" class="bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-4 sm:p-5 w-full max-w-md relative text-slate-100 transform transition-all scale-100">
+      <!-- 標題列 -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center space-x-2">
+          <span class="w-7 h-7 rounded-lg bg-blue-600/30 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-sm tracking-tighter">Aa</span>
+          <h3 class="font-bold text-sm sm:text-base text-white">字級大小設定</h3>
+        </div>
+        <button onclick="toggleFontSizeModal(false)" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- 當前狀態顯示 -->
+      <div class="mt-3.5 flex items-center justify-between bg-slate-950/60 px-3.5 py-2.5 rounded-xl border border-slate-800/80">
+        <span class="text-xs text-slate-400">當前等級：</span>
+        <span id="fontLevelTitle" class="text-xs sm:text-sm font-extrabold text-blue-300 font-mono">等級 1 (標準原級 100%)</span>
+      </div>
+
+      <!-- 快速步進與 5 段刻度條 -->
+      <div class="mt-4">
+        <div class="flex items-center justify-between mb-2">
+          <button id="fontStepDownBtn" onclick="stepFontLevel(-1)" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span>A-</span>
+            <span class="text-[11px] font-normal">縮小</span>
+          </button>
+          <span class="text-xs text-slate-400 font-medium">線性放大 100% ~ 150%</span>
+          <button id="fontStepUpBtn" onclick="stepFontLevel(1)" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span class="text-[11px] font-normal">放大</span>
+            <span>A+</span>
+          </button>
+        </div>
+
+        <!-- 5 段按鈕格狀選取 -->
+        <div class="grid grid-cols-5 gap-1.5 p-1 bg-slate-950/80 rounded-xl border border-slate-800">
+          <button onclick="setFontLevel(1)" id="fontBtn-1" class="font-level-btn py-2 px-1 rounded-lg text-xs font-bold transition-all text-center">
+            <div class="text-[10px] text-slate-400 mb-0.5">Lv.1</div>
+            <div>100%</div>
+          </button>
+          <button onclick="setFontLevel(2)" id="fontBtn-2" class="font-level-btn py-2 px-1 rounded-lg text-xs font-bold transition-all text-center">
+            <div class="text-[10px] text-slate-400 mb-0.5">Lv.2</div>
+            <div>112%</div>
+          </button>
+          <button onclick="setFontLevel(3)" id="fontBtn-3" class="font-level-btn py-2 px-1 rounded-lg text-xs font-bold transition-all text-center">
+            <div class="text-[10px] text-slate-400 mb-0.5">Lv.3</div>
+            <div>125%</div>
+          </button>
+          <button onclick="setFontLevel(4)" id="fontBtn-4" class="font-level-btn py-2 px-1 rounded-lg text-xs font-bold transition-all text-center">
+            <div class="text-[10px] text-slate-400 mb-0.5">Lv.4</div>
+            <div>137%</div>
+          </button>
+          <button onclick="setFontLevel(5)" id="fontBtn-5" class="font-level-btn py-2 px-1 rounded-lg text-xs font-bold transition-all text-center">
+            <div class="text-[10px] text-slate-400 mb-0.5">Lv.5</div>
+            <div>150%</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 即時預覽卡片 -->
+      <div class="mt-4 p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+        <div class="text-[11px] text-slate-400 mb-1 flex items-center justify-between">
+          <span>即時字級預覽效果：</span>
+          <span class="text-emerald-400 font-mono text-[10px]">即選即套用</span>
+        </div>
+        <div class="bg-slate-900/90 p-2.5 rounded-lg border border-slate-700/60">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-extrabold text-white text-sm sm:text-base">00881 國泰台灣科技龍頭</span>
+            <span class="badge-etf px-1.5 py-0.5 rounded text-[11px] font-bold font-mono">ETF</span>
+          </div>
+          <div class="flex items-center justify-between text-xs sm:text-sm">
+            <span class="text-slate-300">現價 <strong class="text-white font-mono">$44.60</strong></span>
+            <span class="text-twred font-bold font-mono">+42.56% (+$31,487)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部按鈕：重設預設與完成 -->
+      <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+        <button onclick="setFontLevel(1)" class="text-xs text-slate-400 hover:text-white underline decoration-slate-600 underline-offset-4 transition">
+          重設為預設 (100%)
+        </button>
+        <button onclick="toggleFontSizeModal(false)" class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 transition">
+          完成
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 主內容容器 ==================== -->
+  <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+
+    <!-- ==================== 第一頁：最新交易與庫存儀表板 ==================== -->
+    <section id="tab1-content" class="tab-content space-y-4 sm:space-y-6">
+
+      <!-- 40 萬目標與 2026 實質現金流雙核心卡 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-4">
+        
+        <!-- 2026 年度 40 萬現值目標卡 (7 cols) -->
+        <div class="lg:col-span-7 bg-gradient-to-br from-blue-950/80 via-slate-900/95 to-indigo-950/60 border border-blue-500/40 rounded-2xl p-4 sm:p-5 shadow-lg relative overflow-hidden">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center space-x-1.5 sm:space-x-2">
+              <span class="px-2 py-0.5 rounded-full text-[11px] sm:text-xs font-bold bg-blue-500/30 text-blue-200 border border-blue-400/40">
+                🎯 2026 庫存現值目標
+              </span>
+              <span class="text-xs sm:text-sm font-semibold text-slate-200 hidden xs:inline">目標：$400,000 元</span>
+            </div>
+            <span id="targetAchieveRateBadge" class="text-xs font-bold text-blue-300 bg-blue-900/60 px-2 sm:px-2.5 py-0.5 rounded border border-blue-400/40 font-mono">
+              達成率 93.40%
+            </span>
+          </div>
+
+          <!-- 現值主數據（手機/電腦自適應排版） -->
+          <div class="mt-2 flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              現值 <span id="targetTotalValue" class="text-emerald-400 font-mono">$373,597</span>
+            </h2>
+            <div id="targetGapDesc" class="text-xs sm:text-sm text-slate-300">
+              僅差 <strong class="text-amber-300 font-bold font-mono">$26,403</strong>，約 6.60%
+            </div>
+          </div>
+
+          <!-- 進度條 -->
+          <div class="w-full bg-slate-800 rounded-full h-3 p-0.5 border border-slate-700 mt-3">
+            <div id="targetProgressBar" class="bg-gradient-to-r from-blue-500 via-indigo-400 to-emerald-400 h-full rounded-full transition-all duration-1000" style="width: 93.40%"></div>
+          </div>
+
+          <!-- 達標指引 -->
+          <p class="text-xs sm:text-sm text-slate-200 mt-3 leading-relaxed bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+            💡 <strong class="text-white font-bold">達標指引</strong>：ETF 均開啟「股息再投入」，每月存入 <strong>$10,000 元</strong>（11/13 與 12/13 扣款），兩月注入 2 萬元本金，<strong>年底現值將直接達到約 $394,000 元，加上即將配息入帳，全力衝刺 40 萬門檻！</strong>
+          </p>
+        </div>
+
+        <!-- 2026 實質現金流卡 (5 cols) -->
+        <div class="lg:col-span-5 bg-gradient-to-br from-amber-950/40 via-slate-900/95 to-emerald-950/40 border border-amber-500/40 rounded-2xl p-4 sm:p-5 shadow-lg flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="px-2 py-0.5 rounded-full text-[11px] sm:text-xs font-bold bg-amber-500/30 text-amber-200 border border-amber-400/40">
+                💰 2026 實質現金股利
+              </span>
+              <span class="text-[11px] sm:text-xs text-slate-300">全年實際累計</span>
+            </div>
+            <p class="text-2xl sm:text-3xl font-extrabold text-amber-300 mt-1 tracking-tight font-mono">
+              $27,121 <span class="text-xs sm:text-sm font-normal text-slate-300">元</span>
+            </p>
+            <p class="text-xs sm:text-sm font-medium text-slate-200 mt-1">
+              平均每月實領被動現金流：<strong class="text-emerald-300 font-bold font-mono">$2,260 元/月</strong>
+            </p>
+          </div>
+          <div class="pt-3 border-t border-slate-800 mt-3 text-xs sm:text-sm text-slate-200 flex flex-col xs:flex-row justify-between xs:items-center gap-1">
+            <span class="text-slate-400">實質總資產（現值 + 實領股利）：</span>
+            <span class="text-white font-bold text-base font-mono">$414,467 元</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 每月存入 10,000 元與 13 號扣款配置專區 -->
+      <div class="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-2.5 mb-3">
+          <div>
+            <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+              <span>🏦</span> 每月存入國泰世華 $10,000 元 • 資金分配藍圖
+            </h3>
+            <p class="text-[11px] sm:text-xs text-slate-300 mt-0.5">
+              固定扣款日：<strong class="text-emerald-300 font-bold">每月 13 號</strong> • 下次扣款：<strong class="text-blue-300 font-bold">2026/11/13</strong>
+            </p>
+          </div>
+          <span class="text-[11px] sm:text-xs px-2.5 py-0.5 sm:px-3 sm:py-1 bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 rounded-full font-bold">
+            定期 70% + 機動 30%
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
+          <!-- 13號定期扣款 -->
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-blue-500/30">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-bold text-blue-300 flex items-center gap-1.5">
+                <span>🗓️</span> 13 號定期扣款（約 $6,000 ~ $7,000）
+              </span>
+              <span class="text-[11px] font-bold bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded">紀律投入</span>
+            </div>
+            <ul class="space-y-1.5 text-slate-200">
+              <li class="flex justify-between border-b border-slate-700/50 pb-1">
+                <span>• <strong>00919 群益高息</strong>（高息核心）</span>
+                <span class="font-mono font-bold text-white">$2,000 元</span>
+              </li>
+              <li class="flex justify-between border-b border-slate-700/50 pb-1">
+                <span>• <strong>00881 科技龍頭</strong>（成長核心）</span>
+                <span class="font-mono font-bold text-white">$2,000 元</span>
+              </li>
+              <li class="flex justify-between border-b border-slate-700/50 pb-1">
+                <span>• <strong>00929 科技優息</strong>（月配活水）</span>
+                <span class="font-mono font-bold text-white">$1,500 元</span>
+              </li>
+              <li class="flex justify-between">
+                <span>• <strong>0050 或 00701</strong>（市值/穩健）</span>
+                <span class="font-mono font-bold text-white">$1,500 元</span>
+              </li>
+            </ul>
+          </div>
+
+          <!-- 機動加碼子彈庫 -->
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-amber-500/30">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-bold text-amber-300 flex items-center gap-1.5">
+                <span>🎯</span> 機動加碼子彈庫（約 $3,000 ~ $4,000）
+              </span>
+              <span class="text-[11px] font-bold bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">靈活彈性</span>
+            </div>
+            <p class="text-slate-300 leading-relaxed mb-1.5">
+              這筆錢直接保留在國泰銀行帳戶中，不必急著買滿，作為機動武器：
+            </p>
+            <ul class="space-y-1 text-slate-200">
+              <li>✓ <strong>逢回加碼</strong>：遇台股或台積電、00881 回檔大跌時手動撿便宜。</li>
+              <li>✓ <strong>搶先領息</strong>：在看好的標的除息日前幾天手動買進零股。</li>
+              <li>✓ <strong>資金安全感</strong>：帳戶隨時有閒置活錢，心態更平穩踏實。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 大核心統計數字卡（手機 2x2 對齊，電腦 4 欄） -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <p class="text-[11px] sm:text-xs font-medium text-slate-400">庫存總現值 (TWD)</p>
+            <p id="statTotalValue" class="text-lg sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 font-mono tracking-tight">$373,597</p>
+          </div>
+          <p class="text-[11px] sm:text-xs text-slate-300 mt-1 pt-1 border-t border-slate-800/60">
+            持有標的：<span class="text-blue-300 font-bold">10 檔</span>
+          </p>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <p class="text-[11px] sm:text-xs font-medium text-slate-400">總投資成本 (TWD)</p>
+            <p id="statTotalCost" class="text-lg sm:text-2xl lg:text-3xl font-extrabold text-slate-200 mt-1 font-mono tracking-tight">$298,150</p>
+          </div>
+          <p class="text-[11px] sm:text-xs text-slate-300 mt-1 pt-1 border-t border-slate-800/60">
+            扣款節奏：<span class="text-emerald-300 font-bold">13號定期扣</span>
+          </p>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <p class="text-[11px] sm:text-xs font-medium text-slate-400">未實現損益 (不含息)</p>
+            <p id="statPnlValue" class="text-lg sm:text-2xl lg:text-3xl font-extrabold text-rose-400 mt-1 font-mono tracking-tight">+$77,990</p>
+          </div>
+          <p id="statRoiValue" class="text-[11px] sm:text-xs text-rose-300 font-bold mt-1 pt-1 border-t border-slate-800/60">
+            報酬率 +26.38%
+          </p>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <p class="text-[11px] sm:text-xs font-medium text-slate-400">歷史累計配息</p>
+            <p class="text-lg sm:text-2xl lg:text-3xl font-extrabold text-amber-300 mt-1 font-mono tracking-tight">$37,049</p>
+          </div>
+          <p id="statTotalReturn" class="text-[11px] sm:text-xs text-emerald-300 font-bold mt-1 pt-1 border-t border-slate-800/60">
+            含息總報 +38.92%
+          </p>
+        </div>
+      </div>
+
+      <!-- 圖表區：左側資產佔比，右側損益長條圖 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-5">
+        
+        <!-- 資產配置佔比 (5 cols) -->
+        <div class="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+          <div class="flex justify-between items-center mb-2.5">
+            <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+              資產配置佔比 (現值)
+            </h3>
+            <div class="flex gap-1">
+              <button onclick="setAllocationMode('holdings')" id="btnAllocHolding" class="px-2 py-1 rounded-md bg-blue-600 text-white font-bold text-xs">各檔</button>
+              <button onclick="setAllocationMode('type')" id="btnAllocType" class="px-2 py-1 rounded-md bg-slate-800 text-slate-300 hover:text-white font-medium text-xs">ETF/個股</button>
+            </div>
+          </div>
+          <div class="relative h-60 sm:h-64 flex items-center justify-center">
+            <canvas id="allocationChart"></canvas>
+          </div>
+          <div class="mt-2.5 pt-2 border-t border-slate-800 text-[11px] sm:text-xs text-slate-300 flex justify-between">
+            <span>核心前三大：00881 (28.2%)、00919 (20.8%)、00701 (18.4%)</span>
+          </div>
+        </div>
+
+        <!-- 各檔標的損益長條圖 (7 cols) -->
+        <div class="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+          <div class="flex justify-between items-center mb-2.5">
+            <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+              各標的未實現損益 (TWD)
+            </h3>
+            <span class="text-[11px] sm:text-xs text-slate-400">台股慣例：紅賺 / 綠賠</span>
+          </div>
+          <div class="relative h-60 sm:h-64">
+            <canvas id="pnlBarChart"></canvas>
+          </div>
+          <div class="mt-2.5 pt-2 border-t border-slate-800 text-[11px] sm:text-xs text-slate-300 flex flex-col xs:flex-row justify-between gap-0.5">
+            <span>獲利雙主力：00881 (+$31,487)、00701 (+$20,240)</span>
+            <span class="text-slate-400">拉回整理：雄獅 (-$1,359)、00991A (-$1,495)、00403A (-$247)、0050 (-$305)</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 2027「月領 1,000 元」目標戰略 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-800 pb-2.5 mb-3">
+          <div>
+            <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-1.5">
+              <span>🌟</span> 2027 目標：每月領息破 $1,000 元之達成戰略
+            </h3>
+            <p class="text-[11px] sm:text-xs text-slate-300 mt-0.5">2026 年已有 6 個月份實質入帳破千，全年平均已達 $2,260 元/月！</p>
+          </div>
+          <span class="text-[11px] sm:text-xs px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 rounded-full font-bold whitespace-nowrap self-start sm:self-auto">
+            2026 平均實領：$2,260 (超標 226%)
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs sm:text-sm">
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-slate-700/60">
+            <span class="font-bold text-blue-300 block mb-1">現有 6 個破千入帳月份</span>
+            <p class="text-slate-300 leading-relaxed text-xs">
+              <strong>2月($4,769)、4月($1,541)、7月($2,596)、8月($1,661)、9月($12,517)、10月($3,098)</strong>。<br>
+              00919 季配與 00881 半年配威力強大，這幾個月均已穩穩突破千元大關。
+            </p>
+          </div>
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-slate-700/60">
+            <span class="font-bold text-amber-300 block mb-1">股息再投入複利效應</span>
+            <p class="text-slate-300 leading-relaxed text-xs">
+              00929 股數從 1 月的 <strong>554 股</strong> 成長至 10 月的 <strong>1,428 股</strong>（月領股息由 $55 升至 $542）！再投入零股持續堆疊您的被動現金流基底。
+            </p>
+          </div>
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-slate-700/60">
+            <span class="font-bold text-emerald-300 block mb-1">2027 達成 12 個月全破千</span>
+            <p class="text-slate-300 leading-relaxed text-xs">
+              配合每月 10,000 元投入，淡季月份（3、5、6、11、12月）在零股持續累積下，<strong>2027 年將全面被推升達到 1~12 月月月破千！</strong>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 庫存持股明細：手機卡片 / 電腦表格 雙模式 ==================== -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        
+        <!-- 表頭與工具列 -->
+        <div class="p-3.5 sm:p-5 border-b border-slate-800 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="font-bold text-white text-base sm:text-lg">庫存持股明細表</h3>
+              <span id="tableBaseDate" class="text-xs text-slate-400 font-mono">（基準日：2026/11/06）</span>
+            </div>
+            <p class="text-xs text-slate-300 mt-0.5">點擊卡片或欄位可查看詳細數據，支援手機卡片與全覽表格雙模式</p>
+          </div>
+
+          <!-- 控制工具列：檢視切換 + 排序選單 + 分類篩選 -->
+          <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            
+            <!-- 檢視切換切換鈕（手機卡片 vs 電腦表格） -->
+            <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700 shrink-0">
+              <button onclick="setViewMode('cards')" id="viewBtnCards" class="px-2.5 py-1 rounded-md text-xs font-bold transition-all bg-blue-600 text-white shadow-sm flex items-center gap-1">
+                <span>📱</span>
+                <span>卡片</span>
+              </button>
+              <button onclick="setViewMode('table')" id="viewBtnTable" class="px-2.5 py-1 rounded-md text-xs font-medium transition-all text-slate-300 hover:text-white flex items-center gap-1">
+                <span>📊</span>
+                <span>表格</span>
+              </button>
+            </div>
+
+            <!-- 排序選單 -->
+            <div class="flex items-center gap-1 bg-slate-800/90 px-2 py-1 rounded-lg border border-slate-700 flex-1 sm:flex-initial min-w-[140px]">
+              <label for="sortSelector" class="text-xs text-blue-300 font-bold whitespace-nowrap">🔄</label>
+              <select id="sortSelector" onchange="handleSortSelect()" class="bg-transparent text-xs text-white focus:outline-none font-semibold cursor-pointer w-full">
+                <option value="value_desc" class="bg-slate-900" selected>現值 (大到小)</option>
+                <option value="value_asc" class="bg-slate-900">現值 (小到大)</option>
+                <option value="pnl_desc" class="bg-slate-900">獲利最高</option>
+                <option value="roi_desc" class="bg-slate-900">報酬率最高</option>
+                <option value="dividend_desc" class="bg-slate-900">累計配息最多</option>
+                <option value="code_asc" class="bg-slate-900">股票代號</option>
+                <option value="shares_desc" class="bg-slate-900">股數最多</option>
+              </select>
+            </div>
+
+            <!-- 分類篩選 -->
+            <div class="flex items-center gap-1 bg-slate-800/90 px-2 py-1 rounded-lg border border-slate-700 shrink-0">
+              <label for="filterType" class="text-xs text-slate-300 font-bold whitespace-nowrap">類別:</label>
+              <select id="filterType" onchange="renderHoldings()" class="bg-transparent text-xs text-white focus:outline-none font-semibold cursor-pointer">
+                <option value="ALL" class="bg-slate-900">全部 (10)</option>
+                <option value="ETF" class="bg-slate-900">ETF (6)</option>
+                <option value="STOCK" class="bg-slate-900">個股/零股 (4)</option>
+                <option value="DRIP" class="bg-slate-900">股息再投 (5)</option>
+              </select>
+            </div>
+
+            <!-- 刷新按鈕 -->
+            <button onclick="refreshPrices({ isManual: true })" class="flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs px-2.5 py-1.5 rounded-lg font-bold transition-all shadow shrink-0">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span class="hidden xs:inline">刷新</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 模式一：手機專用卡片檢視 (Mobile Card View) -->
+        <div id="holdingsCardContainer" class="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <!-- 動態由 JS 渲染行動卡片 -->
+        </div>
+
+        <!-- 模式二：電腦全覽表格檢視 (Desktop Full Table with Sticky First Col) -->
+        <div id="holdingsTableContainer" class="hidden overflow-x-auto relative">
+          <table class="w-full text-left text-sm text-slate-100 whitespace-nowrap">
+            <thead class="bg-slate-800 text-slate-200 font-bold text-xs sm:text-sm border-b border-slate-700">
+              <tr>
+                <th class="py-3 px-3.5 cursor-pointer hover:text-blue-300 transition-colors sticky-col-header shadow-col-edge" onclick="sortTable('code')">
+                  代號 / 名稱 ⬍
+                </th>
+                <th class="py-3 px-3.5">屬性</th>
+                <th class="py-3 px-3.5 text-right cursor-pointer hover:text-blue-300 transition-colors" onclick="sortTable('shares')">股數 ⬍</th>
+                <th class="py-3 px-3.5 text-right cursor-pointer hover:text-blue-300 transition-colors" onclick="sortTable('avgPrice')">均價 ⬍</th>
+                <th class="py-3 px-3.5 text-right cursor-pointer hover:text-blue-300 transition-colors" onclick="sortTable('marketPrice')">市價 ⬍</th>
+                <th class="py-3 px-3.5 text-right cursor-pointer hover:text-blue-300 transition-colors" onclick="sortTable('cost')">成本 ⬍</th>
+                <th class="py-3 px-3.5 text-right cursor-pointer hover:text-blue-300 transition-colors" onclick="sortTable('value')">現值 ⬍</th>
+                <th class="py-3 px-3.5 text-right cursor-pointer hover:text-blue-300 transition-colors" onclick="sortTable('pnl')">未實現損益 ⬍</th>
+                <th class="py-3 px-3.5 text-right cursor-pointer hover:text-blue-300 transition-colors" onclick="sortTable('roi')">報酬率 ⬍</th>
+                <th class="py-3 px-3.5 text-right cursor-pointer hover:text-blue-300 transition-colors" onclick="sortTable('dividend')">累計配息 ⬍</th>
+              </tr>
+            </thead>
+            <tbody id="holdingsTableBody" class="divide-y divide-slate-800/70 font-mono text-xs sm:text-sm">
+              <!-- 動態由 JS 渲染 -->
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- 最新買進交易明細（核對自國泰證券對帳單 2026/11/05） -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-800">
+          <div>
+            <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <span>🧾</span> 最新加碼買進明細（國泰證券對帳單已入帳）
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+              成交日期：<strong class="text-emerald-400 font-mono">2026/11/05</strong> • 帳戶：國泰綜合證券 忠孝分公司 (0318797)
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold font-mono">
+              本次加碼：$2,543 元 (共 3 檔)
+            </span>
+          </div>
+        </div>
+
+        <!-- 交易明細卡片組 -->
+        <div class="mt-3.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <!-- 00881 -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between hover:border-slate-700 transition">
+            <div>
+              <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-800/60">
+                <div class="flex items-center gap-1.5">
+                  <span class="badge-etf px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">ETF</span>
+                  <span class="font-extrabold text-white text-sm">00881 國泰台灣科技龍頭</span>
+                </div>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">現買</span>
+              </div>
+              <div class="space-y-1.5 text-xs text-slate-300 font-mono">
+                <div class="flex justify-between text-slate-400"><span>成交股數</span><strong class="text-white font-bold">+20 股</strong></div>
+                <div class="flex justify-between text-slate-400"><span>成交單價</span><strong class="text-white">$43.00</strong></div>
+                <div class="flex justify-between text-slate-400"><span>成交金額</span><span>$860</span></div>
+                <div class="flex justify-between text-slate-400"><span>手續費</span><span>$1</span></div>
+              </div>
+            </div>
+            <div class="pt-2 mt-2.5 border-t border-slate-800 flex justify-between items-center text-xs">
+              <span class="text-slate-500 font-mono text-[11px]">書號: k01kQ</span>
+              <span class="text-emerald-400 font-bold font-mono">淨扣款 -$861</span>
+            </div>
+          </div>
+
+          <!-- 0050 -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between hover:border-slate-700 transition">
+            <div>
+              <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-800/60">
+                <div class="flex items-center gap-1.5">
+                  <span class="badge-etf px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">ETF</span>
+                  <span class="font-extrabold text-white text-sm">0050 元大台灣50</span>
+                </div>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">現買</span>
+              </div>
+              <div class="space-y-1.5 text-xs text-slate-300 font-mono">
+                <div class="flex justify-between text-slate-400"><span>成交股數</span><strong class="text-white font-bold">+10 股</strong></div>
+                <div class="flex justify-between text-slate-400"><span>成交單價</span><strong class="text-white">$98.00</strong></div>
+                <div class="flex justify-between text-slate-400"><span>成交金額</span><span>$980</span></div>
+                <div class="flex justify-between text-slate-400"><span>手續費</span><span>$1</span></div>
+              </div>
+            </div>
+            <div class="pt-2 mt-2.5 border-t border-slate-800 flex justify-between items-center text-xs">
+              <span class="text-slate-500 font-mono text-[11px]">書號: k01mj</span>
+              <span class="text-emerald-400 font-bold font-mono">淨扣款 -$981</span>
+            </div>
+          </div>
+
+          <!-- 00991A -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between hover:border-slate-700 transition">
+            <div>
+              <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-800/60">
+                <div class="flex items-center gap-1.5">
+                  <span class="badge-active px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">主動ETF</span>
+                  <span class="font-extrabold text-white text-sm">00991A 主動復華未來50</span>
+                </div>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">現買</span>
+              </div>
+              <div class="space-y-1.5 text-xs text-slate-300 font-mono">
+                <div class="flex justify-between text-slate-400"><span>成交股數</span><strong class="text-white font-bold">+50 股</strong></div>
+                <div class="flex justify-between text-slate-400"><span>成交單價</span><strong class="text-white">$14.00</strong></div>
+                <div class="flex justify-between text-slate-400"><span>成交金額</span><span>$700</span></div>
+                <div class="flex justify-between text-slate-400"><span>手續費</span><span>$1</span></div>
+              </div>
+            </div>
+            <div class="pt-2 mt-2.5 border-t border-slate-800 flex justify-between items-center text-xs">
+              <span class="text-slate-500 font-mono text-[11px]">書號: k01m0</span>
+              <span class="text-emerald-400 font-bold font-mono">淨扣款 -$701</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 bg-slate-800/40 rounded-xl p-2.5 text-xs text-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+          <div class="flex items-center gap-1.5">
+            <span class="text-emerald-400 font-bold">✓</span>
+            <span>已全數自動併入庫存股數、平均買進成本攤平，並即時納入未實現損益與達成率計算。</span>
+          </div>
+          <span class="text-[11px] text-slate-400 font-mono shrink-0">券商手續費合計 $3 元 (國泰證券 2.8 折)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 第二頁：配息日曆與 2026 實領紀錄 ==================== -->
+    <section id="tab2-content" class="tab-content space-y-4 sm:space-y-6 hidden">
+      
+      <!-- 2026 每月現金流入長條圖 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 mb-3">
+          <div>
+            <h2 class="text-base sm:text-xl font-bold text-white flex items-center gap-1.5">
+              <span>📊</span> 2026 全年每月現金股利入帳分布
+            </h2>
+            <p class="text-[11px] sm:text-xs text-slate-300 mt-0.5">2026 全年累計實領現金股息達 <strong class="text-amber-300 font-bold font-mono">$27,121 元</strong></p>
+          </div>
+          <span class="text-xs bg-amber-500/20 text-amber-200 border border-amber-400/40 px-2.5 py-0.5 rounded-full font-bold">
+            9 月最高峰：$12,517 元
+          </span>
+        </div>
+        <div class="relative h-60 sm:h-64">
+          <canvas id="monthlyDividendChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 1~12 月全年度配息日程清單 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <div class="p-3.5 sm:p-5 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5">
+          <div>
+            <h3 class="font-bold text-white text-base sm:text-lg flex items-center gap-1.5">
+              <span>📅</span> 1~12 月全年度配息日程清單
+            </h3>
+            <p class="text-[11px] sm:text-xs text-slate-300 mt-0.5">
+              掌握每個月「現金入帳發放（誰發錢）」與「當月除息標的（誰除息）」
+            </p>
+          </div>
+
+          <!-- 快速過濾按鈕組 -->
+          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto py-0.5">
+            <button onclick="filterMonthlySchedule('ALL')" id="schedBtn-ALL" class="sched-filter-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white transition-all whitespace-nowrap shrink-0">
+              全部月份 (12)
+            </button>
+            <button onclick="filterMonthlySchedule('OVER1000')" id="schedBtn-OVER1000" class="sched-filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-amber-300 border border-amber-500/40 hover:bg-slate-700 transition-all whitespace-nowrap shrink-0">
+              🌟 破千主力月 (6)
+            </button>
+            <button onclick="filterMonthlySchedule('MAJOR')" id="schedBtn-MAJOR" class="sched-filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white transition-all whitespace-nowrap shrink-0">
+              季配/半年配除息月
+            </button>
+          </div>
+        </div>
+
+        <!-- 手機日程卡片流 (Mobile Feed) -->
+        <div id="monthlyScheduleCardContainer" class="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:hidden">
+          <!-- 動態由 JS 渲染手機月份卡片 -->
+        </div>
+
+        <!-- 電腦表格 (Desktop Table) -->
+        <div class="hidden md:block overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-100">
+            <thead class="bg-slate-800/95 text-slate-200 font-bold text-xs sm:text-sm border-b border-slate-700">
+              <tr>
+                <th class="py-3 px-3.5 whitespace-nowrap">月份 / 屬性</th>
+                <th class="py-3 px-3.5 min-w-[200px]">💰 現金入帳標的（誰發放現金）</th>
+                <th class="py-3 px-3.5 min-w-[180px]">⏳ 當月除息標的（誰除息）</th>
+                <th class="py-3 px-3.5 text-right whitespace-nowrap">2026 實領入帳</th>
+                <th class="py-3 px-3.5 min-w-[220px]">現金流特性與戰略指引</th>
+              </tr>
+            </thead>
+            <tbody id="monthlyScheduleBody" class="divide-y divide-slate-800/70">
+              <!-- 動態由 JS 渲染 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2026 實際除權息完整明細清單 (25 筆) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <div class="p-3.5 sm:p-5 border-b border-slate-800 flex flex-col xs:flex-row justify-between items-start xs:items-center gap-2">
+          <div>
+            <h3 class="font-bold text-white text-base sm:text-lg">2026 全年除權息明細流水帳（共 25 筆）</h3>
+            <p class="text-[11px] sm:text-xs text-slate-300 mt-0.5">依發放日期由近到遠排序，完整紀錄每次除息股數與金額</p>
+          </div>
+          <span class="text-xs font-mono text-emerald-300 bg-emerald-500/20 px-2.5 py-1 rounded-md border border-emerald-400/30 font-bold">
+            實領總計：$27,121
+          </span>
+        </div>
+
+        <div class="overflow-x-auto max-h-[500px]">
+          <table class="w-full text-left text-xs sm:text-sm text-slate-100 whitespace-nowrap">
+            <thead class="bg-slate-800 text-slate-200 font-bold sticky top-0 backdrop-blur z-10 border-b border-slate-700">
+              <tr>
+                <th class="py-2.5 px-3">現金發放日</th>
+                <th class="py-2.5 px-3">除息日期</th>
+                <th class="py-2.5 px-3">標的代號 / 名稱</th>
+                <th class="py-2.5 px-3 text-right">除息股數</th>
+                <th class="py-2.5 px-3 text-right">每股配息</th>
+                <th class="py-2.5 px-3 text-right">現金股息</th>
+                <th class="py-2.5 px-3 text-center">狀態</th>
+              </tr>
+            </thead>
+            <tbody id="dividendHistoryBody" class="divide-y divide-slate-800/70 font-mono">
+              <!-- 動態由 JS 渲染 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 10 檔標的配息屬性規則卡 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <h3 class="text-sm sm:text-base font-bold text-white mb-2.5">📋 各標的配息週期與常規時程總表</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs sm:text-sm">
+          <div class="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-white">00929 復華台灣科技優息</span>
+              <span class="px-2 py-0.5 rounded bg-blue-500/30 text-blue-200 font-bold text-[11px]">月配型</span>
+            </div>
+            <p class="text-slate-300 mt-1 leading-relaxed text-xs">每月 17~21 日除息，次月 14~16 日發放。月月領息現金流主力，再投入零股累積速度最快。</p>
+          </div>
+
+          <div class="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-white">00919 群益台灣精選高息</span>
+              <span class="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-200 font-bold text-[11px]">季配型</span>
+            </div>
+            <p class="text-slate-300 mt-1 leading-relaxed text-xs">每年 3、6、9、12 月除息，次月 14~15 日發放。單次股息已達 $2,500 以上，是破千月的大支柱。</p>
+          </div>
+
+          <div class="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-white">00881 國泰台灣科技龍頭</span>
+              <span class="px-2 py-0.5 rounded bg-purple-500/30 text-purple-200 font-bold text-[11px]">半年配</span>
+            </div>
+            <p class="text-slate-300 mt-1 leading-relaxed text-xs">每年 1、8 月除息，2、9 月發放。2026/08 單次大配 $9,641 元，為全組合配息貢獻冠軍！</p>
+          </div>
+
+          <div class="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-white">00701 國泰股利精選30</span>
+              <span class="px-2 py-0.5 rounded bg-purple-500/30 text-purple-200 font-bold text-[11px]">半年配</span>
+            </div>
+            <p class="text-slate-300 mt-1 leading-relaxed text-xs">每年 1、8 月除息，2、9 月發放。金融傳產權值為主，股息極穩，2026 年合計配發 $3,223 元。</p>
+          </div>
+
+          <div class="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-white">2330 台積電</span>
+              <span class="px-2 py-0.5 rounded bg-cyan-500/30 text-cyan-200 font-bold text-[11px]">季配個股</span>
+            </div>
+            <p class="text-slate-300 mt-1 leading-relaxed text-xs">3、6、9、12 月除息，次月發放。每季配息穩健成長，預計 12/10 再次除息。</p>
+          </div>
+
+          <div class="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-white">00991A / 雄獅 / 寶雅 / 0050</span>
+              <span class="px-2 py-0.5 rounded bg-amber-500/30 text-amber-200 font-bold text-[11px]">年中旺季</span>
+            </div>
+            <p class="text-slate-300 mt-1 leading-relaxed text-xs">00991A 主動式 7 月除息配 $770；雄獅與寶雅於 6~7 月除息，7~8 月各進帳百元現金流。</p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ==================== 第三頁：股利成分與個人所得稅試算 ==================== -->
+    <section id="tab3-content" class="tab-content space-y-4 sm:space-y-6 hidden">
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <h2 class="text-lg sm:text-2xl font-bold text-white mb-1">🧾 股利所得成分拆解與個人所得稅試算</h2>
+        <p class="text-xs sm:text-sm text-slate-300">利用 2026 全年實際領到的 $27,121 元股息精算：拆解免稅額度，善用 8.5% 可抵減稅額享退稅優惠！</p>
+
+        <!-- 4大成分解構卡 (手機 2x2，電腦 4 欄) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 mt-4">
+          <div class="bg-slate-800/70 border border-amber-500/40 rounded-xl p-3 sm:p-3.5">
+            <span class="px-2 py-0.5 rounded text-[11px] bg-amber-500/30 text-amber-200 font-bold">要申報 (享8.5%抵減)</span>
+            <h4 class="font-bold text-white text-sm mt-1.5">54C 境內股利所得</h4>
+            <p class="text-xs text-slate-300 mt-1 leading-relaxed">計入綜合所得總額，但每 1 元享有 <strong>8.5% 抵減稅額</strong>（上限 8 萬元）！</p>
+          </div>
+
+          <div class="bg-slate-800/70 border border-emerald-500/40 rounded-xl p-3 sm:p-3.5">
+            <span class="px-2 py-0.5 rounded text-[11px] bg-emerald-500/30 text-emerald-200 font-bold">完全免稅 🎉</span>
+            <h4 class="font-bold text-white text-sm mt-1.5">76 國內財產交易所得</h4>
+            <p class="text-xs text-slate-300 mt-1 leading-relaxed">ETF 換股產生的已實現資本利得，依台灣現行稅法<strong>停徵證券交易所得稅</strong>！</p>
+          </div>
+
+          <div class="bg-slate-800/70 border border-emerald-500/40 rounded-xl p-3 sm:p-3.5">
+            <span class="px-2 py-0.5 rounded text-[11px] bg-emerald-500/30 text-emerald-200 font-bold">完全免稅 🎉</span>
+            <h4 class="font-bold text-white text-sm mt-1.5">收益平準金</h4>
+            <p class="text-xs text-slate-300 mt-1 leading-relaxed">平準金機制屬於<strong>投資本金退還</strong>，依法完全不課綜合所得稅！</p>
+          </div>
+
+          <div class="bg-slate-800/70 border border-emerald-500/40 rounded-xl p-3 sm:p-3.5">
+            <span class="px-2 py-0.5 rounded text-[11px] bg-emerald-500/30 text-emerald-200 font-bold">完全免稅 🎉</span>
+            <h4 class="font-bold text-white text-sm mt-1.5">資本公積 / 其他</h4>
+            <p class="text-xs text-slate-300 mt-1 leading-relaxed">依公司法規範之資本公積發放，亦屬出資返還，<strong>完全免稅</strong>！</p>
+          </div>
+        </div>
+
+        <!-- 互動試算器 -->
+        <div class="mt-5 bg-slate-800/60 border border-slate-700 rounded-2xl p-4 sm:p-5 shadow-sm">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 mb-2">
+            <h3 class="text-sm sm:text-base font-bold text-white flex items-center gap-1.5">
+              <span>🧮</span> 2026 年度股利所得稅精確試算機
+            </h3>
+            <span class="text-xs text-amber-200 bg-amber-500/20 border border-amber-400/40 px-2.5 py-0.5 rounded-full font-bold font-mono">
+              實領母數：$27,121 元
+            </span>
+          </div>
+          <p class="text-xs text-slate-300 mb-3">請點選您的個人所得稅級距，系統會立即模擬計算出股利所得的實質稅負或退稅金額：</p>
+
+          <!-- 稅率選擇按鈕（手機 2x2 排列整齊） -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            <button onclick="calculateTax(0)" id="taxBtn0" class="tax-rate-btn py-2 px-2.5 rounded-lg text-xs font-semibold bg-slate-800 border border-slate-700 text-slate-200 hover:text-white transition-all text-center">
+              0% 免稅族群 (學生/小資)
+            </button>
+            <button onclick="calculateTax(5)" id="taxBtn5" class="tax-rate-btn py-2 px-2.5 rounded-lg text-xs font-semibold bg-blue-600 border border-blue-500 text-white shadow-md transition-all text-center">
+              5% 小資上班族 (最常見)
+            </button>
+            <button onclick="calculateTax(12)" id="taxBtn12" class="tax-rate-btn py-2 px-2.5 rounded-lg text-xs font-semibold bg-slate-800 border border-slate-700 text-slate-200 hover:text-white transition-all text-center">
+              12% 中產菁英族
+            </button>
+            <button onclick="calculateTax(20)" id="taxBtn20" class="tax-rate-btn py-2 px-2.5 rounded-lg text-xs font-semibold bg-slate-800 border border-slate-700 text-slate-200 hover:text-white transition-all text-center">
+              20% 高所得族
+            </button>
+          </div>
+
+          <!-- 試算結果呈現 -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+              <span class="text-xs font-medium text-slate-400 block mb-1">2026 預估 54C 應稅股利</span>
+              <span class="text-xl sm:text-2xl font-bold text-white font-mono" id="taxableAmountDisplay">$9,492</span>
+              <span class="text-[11px] text-slate-400 block mt-1 leading-relaxed">（扣除 65% 免稅資本利得與平準金，僅約 35% 需申報）</span>
+            </div>
+
+            <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+              <span class="text-xs font-medium text-slate-400 block mb-1">享 8.5% 可抵減稅額</span>
+              <span class="text-xl sm:text-2xl font-bold text-emerald-400 font-mono" id="taxCreditDisplay">+$807</span>
+              <span class="text-[11px] text-slate-400 block mt-1">（每戶可抵減稅額上限 8 萬元）</span>
+            </div>
+
+            <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800" id="taxResultBox">
+              <span class="text-xs font-medium text-slate-400 block mb-1">試算結果：實質稅負 / 退稅</span>
+              <span class="text-xl sm:text-2xl font-bold text-emerald-400 font-mono" id="taxFinalDisplay">預估退稅 +$332 元</span>
+              <span class="text-[11px] text-emerald-300 block mt-1 font-bold" id="taxNoteDisplay">8.5% 抵減大於 5% 稅率，申報反而可享有退稅！</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 二代健保補充保費 (2.11%) 說明 -->
+        <div class="mt-4 bg-slate-800/60 border border-slate-700 rounded-xl p-3 sm:p-4 flex items-start gap-2.5">
+          <div class="p-2 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div class="text-xs sm:text-sm">
+            <h4 class="font-bold text-white text-sm">二代健保補充保費 (2.11%) 檢核：全數安全，0 費用扣繳！</h4>
+            <p class="text-slate-300 mt-0.5 leading-relaxed text-xs">
+              現行健保法規要求<strong>單筆「54C 境內股利」達 20,000 元（含）以上</strong>才需就源扣繳 2.11% 補充保費。
+            </p>
+            <p class="text-slate-400 mt-0.5 leading-relaxed text-xs">
+              您 2026 年單次最高入帳為 00881 的 $9,641 元（其中 54C 僅約 $3,374 元），遠低於 20,000 元扣繳門檻，<strong>完全不會被扣除任何健保補充保費</strong>。
+            </p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ==================== 第四頁：資產健檢與加速加碼建議 ==================== -->
+    <section id="tab4-content" class="tab-content space-y-4 sm:space-y-6 hidden">
+
+      <!-- 頁面頂部導言 -->
+      <div class="bg-gradient-to-r from-blue-950/70 via-slate-900/90 to-indigo-950/70 border border-blue-500/30 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div>
+            <h2 class="text-lg sm:text-2xl font-extrabold text-white flex items-center gap-1.5">
+              <span>💡</span> 專屬資產健檢與「加速累積」加碼指引
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-300 mt-1 leading-relaxed">
+              依據您目前 10 檔持股獲利結構與每月 1 萬元儲蓄習慣，量身打造「去蕪存菁、換股加速、逢低甜蜜點」實戰藍圖！
+            </p>
+          </div>
+          <span class="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-3 py-1 rounded-full font-bold shrink-0">
+            🎯 大盤翻倍 + 高息現金流雙引擎
+          </span>
+        </div>
+      </div>
+
+      <!-- 區塊一：持股汰弱留強行動決策矩陣 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="border-b border-slate-800 pb-2.5 mb-3">
+          <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-1.5">
+            <span>⚖️</span> 一、 持股汰弱留強決策矩陣（現有 10 檔處置方向）
+          </h3>
+          <p class="text-xs text-slate-300 mt-0.5">劃分「長期核心主力」與「零星部位處置指引」，讓每一分資金發揮最大效益。</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+          <!-- 左側：核心鐵三角（佔比 67%） -->
+          <div class="bg-slate-800/60 border border-emerald-500/30 rounded-xl p-3.5 sm:p-4 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs sm:text-sm font-bold text-emerald-300 flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                核心主力：緊緊抱住，滾雪球 (佔比 67%)
+              </span>
+              <span class="text-[11px] bg-emerald-500/20 text-emerald-200 px-2 py-0.5 rounded font-bold">股息再投入</span>
+            </div>
+            
+            <div class="space-y-2 text-xs sm:text-sm">
+              <div class="bg-slate-900/80 p-2.5 sm:p-3 rounded-lg border border-slate-700/60">
+                <div class="flex flex-col xs:flex-row xs:justify-between xs:items-center font-bold text-white gap-0.5">
+                  <span>00881 國泰台灣科技龍頭</span>
+                  <span class="text-rose-400 font-mono">+42.56% (獲利 $31,487)</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-1">累計配息破 1.6 萬！台灣 AI 與半導體核心旗艦，長期爆發力與半年大配息首選，持續定期定額！</p>
+              </div>
+
+              <div class="bg-slate-900/80 p-2.5 sm:p-3 rounded-lg border border-slate-700/60">
+                <div class="flex flex-col xs:flex-row xs:justify-between xs:items-center font-bold text-white gap-0.5">
+                  <span>00701 國泰股利精選30</span>
+                  <span class="text-rose-400 font-mono">+41.76% (獲利 $20,240)</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-1">金融傳產權值為主，抗跌防禦力極高，穩穩填息，是全資產的穩定基底護盾。</p>
+              </div>
+
+              <div class="bg-slate-900/80 p-2.5 sm:p-3 rounded-lg border border-slate-700/60">
+                <div class="flex flex-col xs:flex-row xs:justify-between xs:items-center font-bold text-white gap-0.5">
+                  <span>00919 群益台灣精選高息</span>
+                  <span class="text-rose-400 font-mono">+31.28% (獲利 $18,535)</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-1">季配息主力骨幹，單次配息達 $2,500 以上，為四季現金流破千元的關鍵推手。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右側：個股與主動部位處置指引 -->
+          <div class="bg-slate-800/60 border border-amber-500/30 rounded-xl p-3.5 sm:p-4 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs sm:text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                個股與主動部位：去蕪存菁指引
+              </span>
+              <span class="text-[11px] bg-amber-500/20 text-amber-200 px-2 py-0.5 rounded font-bold">精簡看盤心力</span>
+            </div>
+
+            <div class="space-y-2 text-xs sm:text-sm">
+              <div class="bg-slate-900/80 p-2.5 sm:p-3 rounded-lg border border-slate-700/60">
+                <div class="flex justify-between items-center">
+                  <span class="font-bold text-white">00403A 主動統一升級50</span>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">建議出清</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                  目前回檔 -$247 元（現值 $1,808 元）。<strong>切勿為了「湊滿 1,000 股」再掏 $7,200 去攤平</strong>！建議出清換回約 1,800 元轉買 00881 或 00919 零股滾複利。
+                </p>
+              </div>
+
+              <div class="bg-slate-900/80 p-2.5 sm:p-3 rounded-lg border border-slate-700/60">
+                <div class="flex justify-between items-center">
+                  <span class="font-bold text-white">2731 雄獅（員工自選持股）</span>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">留著等反彈</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                  薪水已與雄獅綁定，<strong>切忌用每月新存的錢繼續攤平</strong>避免雙重風險！現有 130 股放著即可，等旅遊旺季反彈回到成本價或小賺時再順風換成 ETF。
+                </p>
+              </div>
+
+              <div class="bg-slate-900/80 p-2.5 sm:p-3 rounded-lg border border-slate-700/60">
+                <div class="flex justify-between items-center">
+                  <span class="font-bold text-white">5904 寶雅*（零售通路龍頭）</span>
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">續抱奔跑</span>
+                </div>
+                <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                  獲利 +19.36% 表現優異！<strong>安心續抱領息</strong>即可；只要維持原則「不額外花新錢加碼」，讓新資金集中在 ETF 主戰場即可。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 區塊二：為什麼要引進「大盤市值型 ETF」？ -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 border-b border-slate-800 pb-2.5 mb-3">
+          <div>
+            <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-1.5">
+              <span>🚀</span> 二、 加速翻倍：為什麼資產要加碼「大盤市值型 ETF」？
+            </h3>
+            <p class="text-xs text-slate-300 mt-0.5">高股息給您現金流，而「大盤市值型」是推動資產從 40 萬翻向 60 萬、100 萬的最強火車頭！</p>
+          </div>
+          <span class="text-xs bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2.5 py-0.5 rounded-full font-bold">
+            推薦加碼：006208 或 0050
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs sm:text-sm">
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-slate-700/70">
+            <span class="text-blue-300 font-bold block mb-1">1. 高股息 vs 市值型之分</span>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              高股息（00919、00929）把公司賺的錢全分出，長期淨值成長慢；而市值型將獲利留在最強企業繼續投資，<strong>長期年化報酬率高出 3%~5%</strong>！
+            </p>
+          </div>
+
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-slate-700/70">
+            <span class="text-amber-300 font-bold block mb-1">2. 為什麼推薦 006208？</span>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              006208 與 0050 追蹤完全相同的台股前 50 大企業，但 <strong>006208 內扣管理費僅約 0.24%（0050 為 0.43%）</strong>！省下的內扣費就是多賺的純利潤。
+            </p>
+          </div>
+
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-slate-700/70">
+            <span class="text-emerald-300 font-bold block mb-1">3. 最佳搭配：雙渦輪引擎</span>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>「006208/0050（衝資產翻倍） + 00881/00919（季季領現金流）」</strong>是台灣最成熟穩健的雙渦輪配置，既有被動收入，又能讓總資產高速長大！
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 區塊三：每月 10,000 元「加速版」扣款最佳化藍圖 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 border-b border-slate-800 pb-2.5 mb-3">
+          <div>
+            <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-1.5">
+              <span>📅</span> 三、 每月 10,000 元最佳化扣款藍圖（扣款日：每月 13 號）
+            </h3>
+            <p class="text-xs text-slate-300 mt-0.5">兼顧「長期市值翻倍」、「科技高息主力」與「手動逢低撿便宜」的黃金比例</p>
+          </div>
+          <span class="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-2.5 py-0.5 rounded-full font-bold">
+            每月定期 8,500 + 機動 1,500
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+          <!-- 006208 / 0050 -->
+          <div class="bg-slate-800/70 border border-blue-500/40 rounded-xl p-3 sm:p-3.5 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <span class="px-1.5 py-0.5 rounded text-[10px] sm:text-xs bg-blue-500/30 text-blue-200 font-bold">純成長 (35%)</span>
+                <span class="text-[10px] sm:text-xs text-blue-300 font-bold">13號扣</span>
+              </div>
+              <h4 class="text-xs sm:text-sm font-extrabold text-white">006208 / 0050</h4>
+              <p class="text-lg sm:text-2xl font-black text-blue-400 mt-1 font-mono">$3,500</p>
+              <p class="text-xs text-slate-300 mt-1.5 leading-relaxed hidden xs:block">
+                跟隨台股前 50 大企業成長，拉大長期資產淨值，是衝刺 60 萬與 100 萬的火車頭。
+              </p>
+            </div>
+          </div>
+
+          <!-- 00881 -->
+          <div class="bg-slate-800/70 border border-purple-500/40 rounded-xl p-3 sm:p-3.5 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <span class="px-1.5 py-0.5 rounded text-[10px] sm:text-xs bg-purple-500/30 text-purple-200 font-bold">科技獲利 (30%)</span>
+                <span class="text-[10px] sm:text-xs text-purple-300 font-bold">13號扣</span>
+              </div>
+              <h4 class="text-xs sm:text-sm font-extrabold text-white">00881 科技龍頭</h4>
+              <p class="text-lg sm:text-2xl font-black text-purple-400 mt-1 font-mono">$3,000</p>
+              <p class="text-xs text-slate-300 mt-1.5 leading-relaxed hidden xs:block">
+                維持獲利近 50% 的最強勝率，鎖定全球 AI、半導體浪潮，每年領取豐厚半年配。
+              </p>
+            </div>
+          </div>
+
+          <!-- 00919 -->
+          <div class="bg-slate-800/70 border border-amber-500/40 rounded-xl p-3 sm:p-3.5 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <span class="px-1.5 py-0.5 rounded text-[10px] sm:text-xs bg-amber-500/30 text-amber-200 font-bold">現金流主力 (20%)</span>
+                <span class="text-[10px] sm:text-xs text-amber-300 font-bold">13號扣</span>
+              </div>
+              <h4 class="text-xs sm:text-sm font-extrabold text-white">00919 精選高息</h4>
+              <p class="text-lg sm:text-2xl font-black text-amber-400 mt-1 font-mono">$2,000</p>
+              <p class="text-xs text-slate-300 mt-1.5 leading-relaxed hidden xs:block">
+                穩定補充高股息部位，確保 2027 年四季配息月單次入帳突破 3,000 元大關！
+              </p>
+            </div>
+          </div>
+
+          <!-- 機動彈藥 -->
+          <div class="bg-slate-800/70 border border-emerald-500/40 rounded-xl p-3 sm:p-3.5 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <span class="px-1.5 py-0.5 rounded text-[10px] sm:text-xs bg-emerald-500/30 text-emerald-200 font-bold">機動彈藥 (15%)</span>
+                <span class="text-[10px] sm:text-xs text-emerald-300 font-bold">活存備用</span>
+              </div>
+              <h4 class="text-xs sm:text-sm font-extrabold text-white">逢低撿零股</h4>
+              <p class="text-lg sm:text-2xl font-black text-emerald-400 mt-1 font-mono">$1,500</p>
+              <p class="text-xs text-slate-300 mt-1.5 leading-relaxed hidden xs:block">
+                留在活存帳戶。遇台股大盤或台積電、00881 大跌時手動在甜蜜點撿便宜！
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 區塊四：零股逢回加碼「買進甜蜜點」對照表 (手機排版強化) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="border-b border-slate-800 pb-2.5 mb-3">
+          <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-1.5">
+            <span>🎯</span> 四、 零股逢回加碼「買進甜蜜點」對照表（台積電 2330 & 00881）
+          </h3>
+          <p class="text-xs text-slate-300 mt-0.5">實戰心法：買綠不買紅、大跌大買。以下價格是高勝率的分批買進區間：</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <!-- 台積電零股 (現價 2,370) -->
+          <div class="bg-slate-800/60 border border-cyan-500/30 rounded-xl p-3.5 sm:p-4">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-extrabold text-white text-xs sm:text-sm flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                2330 台積電（現價 $2,370 • 成本 $2,057）
+              </span>
+              <span class="text-[11px] bg-cyan-500/20 text-cyan-200 px-2 py-0.5 rounded font-bold">每次 1 股</span>
+            </div>
+
+            <div class="space-y-2 text-xs sm:text-sm">
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col xs:flex-row xs:items-center justify-between gap-1">
+                <div>
+                  <span class="font-bold text-white block">初階日常回檔點（約 -5%）</span>
+                  <span class="text-xs text-slate-300">5% 是股市正常深呼吸，隨時分批進場</span>
+                </div>
+                <div class="xs:text-right">
+                  <span class="font-mono font-extrabold text-cyan-300 text-sm sm:text-base">$2,250 ~ $2,280 以下</span>
+                  <span class="block text-[11px] text-slate-400">買進 1 股</span>
+                </div>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col xs:flex-row xs:items-center justify-between gap-1">
+                <div>
+                  <span class="font-bold text-white block">甜蜜加碼點（約 -10%）</span>
+                  <span class="text-xs text-slate-300">季線強支撐，高勝率安全買點</span>
+                </div>
+                <div class="xs:text-right">
+                  <span class="font-mono font-extrabold text-amber-300 text-sm sm:text-base">$2,100 ~ $2,150 以下</span>
+                  <span class="block text-[11px] text-slate-400">買進 1 ~ 2 股</span>
+                </div>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col xs:flex-row xs:items-center justify-between gap-1">
+                <div>
+                  <span class="font-bold text-white block">國安級恐慌點（約 -15%）</span>
+                  <span class="text-xs text-slate-300">接近歷史成本，千載難逢大便宜</span>
+                </div>
+                <div class="xs:text-right">
+                  <span class="font-mono font-extrabold text-rose-400 text-sm sm:text-base">$2,050 元以下</span>
+                  <span class="block text-[11px] text-slate-400">機動彈藥大舉買進</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 00881 零股 (現價 44.60) -->
+          <div class="bg-slate-800/60 border border-purple-500/30 rounded-xl p-3.5 sm:p-4">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-extrabold text-white text-xs sm:text-sm flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+                00881 國泰科技龍頭（現價 $44.60 • 成本 $31.21）
+              </span>
+              <span class="text-[11px] bg-purple-500/20 text-purple-200 px-2 py-0.5 rounded font-bold">每次 30~50 股</span>
+            </div>
+
+            <div class="space-y-2 text-xs sm:text-sm">
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col xs:flex-row xs:items-center justify-between gap-1">
+                <div>
+                  <span class="font-bold text-white block">初階日常回檔點（約 -5% ~ -6%）</span>
+                  <span class="text-xs text-slate-300">日常拉回試水溫，單日跌 1.5%~2% 進場</span>
+                </div>
+                <div class="xs:text-right">
+                  <span class="font-mono font-extrabold text-purple-300 text-sm sm:text-base">$44.0 ~ $44.5 元以下</span>
+                  <span class="block text-[11px] text-slate-400">買 30 股 (約 $1.3K)</span>
+                </div>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col xs:flex-row xs:items-center justify-between gap-1">
+                <div>
+                  <span class="font-bold text-white block">甜蜜加碼點（約 -10%）</span>
+                  <span class="text-xs text-slate-300">扎實拉回季線，勝率極高</span>
+                </div>
+                <div class="xs:text-right">
+                  <span class="font-mono font-extrabold text-amber-300 text-sm sm:text-base">$42.0 ~ $42.5 元以下</span>
+                  <span class="block text-[11px] text-slate-400">買 50 股 (約 $2.1K)</span>
+                </div>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col xs:flex-row xs:items-center justify-between gap-1">
+                <div>
+                  <span class="font-bold text-white block">重度拉回大撿便宜（約 -15%）</span>
+                  <span class="text-xs text-slate-300">大盤恐慌下殺，送分題進場</span>
+                </div>
+                <div class="xs:text-right">
+                  <span class="font-mono font-extrabold text-rose-400 text-sm sm:text-base">$40.0 元以下</span>
+                  <span class="block text-[11px] text-slate-400">買進 100 股以上</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 區塊五：散戶必修兩大「避坑心法」 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="border-b border-slate-800 pb-2.5 mb-3">
+          <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-1.5">
+            <span>🧠</span> 五、 散戶最容易踩的兩大「投資心理陷阱」與破解心法
+          </h3>
+          <p class="text-xs text-slate-300 mt-0.5">觀念對了，財富自然累積得快又穩</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs sm:text-sm">
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-rose-500/30">
+            <span class="font-bold text-rose-300 text-sm block mb-1">陷阱 1：買剛上市 (IPO) 的 ETF，抱久就能變 0050 嗎？</span>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>【破解盲點】</strong>：0050 會翻倍是因為裡面的台積電、聯發科獲利暴增！新 ETF 只是外包裝，若成分股沒有強大成長力，抱 10 年也不會變 0050。<br>
+              <strong class="text-emerald-300">真正讓人變厲害的，是「每月存錢本金大 + 買最強大盤龍頭 + 股息再投入滾 10 年」！</strong>
+            </p>
+          </div>
+
+          <div class="bg-slate-800/60 rounded-xl p-3 sm:p-3.5 border border-rose-500/30">
+            <span class="font-bold text-rose-300 text-sm block mb-1">陷阱 2：一路下跌的股票，該「買到持平（越跌越買來攤平）」嗎？</span>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>【破解盲點】</strong>：華爾街名言：「在下跌的股票裡攤平，就像伸手接墜落的飛刀。」把好子彈拿去救弱勢股票，等於白白浪費了加碼最強獲利火車頭（00881、0050）的良機。<br>
+              <strong class="text-emerald-300">絕不用好錢救壞錢！讓弱勢部位自然等待反彈，把新資金全灌給最強戰友！</strong>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 區塊六：資產成長里程碑目標 -->
+      <div class="bg-gradient-to-r from-emerald-950/60 via-slate-900/90 to-blue-950/60 border border-emerald-500/40 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <h3 class="font-bold text-white text-sm sm:text-base mb-2 flex items-center gap-1.5">
+          <span>📈</span> 六、 您的加速成長里程碑路線圖
+        </h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3.5 mt-2.5 text-xs sm:text-sm">
+          <div class="bg-slate-900/80 p-3 sm:p-3.5 rounded-xl border border-slate-700/60">
+            <span id="milestoneBaseDate" class="text-xs text-slate-400 font-bold">基準現況 (2026/11/06)</span>
+            <p id="milestoneValue" class="text-xl sm:text-2xl font-black text-white mt-1 font-mono">$373,597 元</p>
+            <p id="milestoneDesc" class="text-xs text-slate-300 mt-0.5">成本 29.5 萬，帳面淨賺 +7.8 萬 (+26.4%)</p>
+          </div>
+
+          <div class="bg-slate-900/80 p-3 sm:p-3.5 rounded-xl border border-emerald-500/40">
+            <span class="text-xs text-emerald-300 font-bold">2026 年底 (2 個月後)</span>
+            <p class="text-xl sm:text-2xl font-black text-emerald-400 mt-1 font-mono">突破 $41 萬元</p>
+            <p class="text-xs text-slate-300 mt-0.5">加上 11、12 月存入 2 萬，提前超額越過 40 萬！</p>
+          </div>
+
+          <div class="bg-slate-900/80 p-3 sm:p-3.5 rounded-xl border border-blue-500/40">
+            <span class="text-xs text-blue-300 font-bold">2027 年底 (1 年後展望)</span>
+            <p class="text-xl sm:text-2xl font-black text-blue-400 mt-1 font-mono">$56 萬 ~ $60 萬元</p>
+            <p class="text-xs text-slate-300 mt-0.5">年存 12 萬 + 股息再投 3 萬 + 大盤常態複利！</p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- 底部備註與說明 -->
+  <footer class="border-t border-slate-800 mt-10 py-5 text-center text-xs text-slate-400 px-4">
+    <p class="font-medium text-slate-300">MyInvest 個人投資儀表板 • 支援手機與電腦全自適應排版 • 100% 本地運算與儲存</p>
+    <p class="mt-1 text-slate-500">配息紀錄核對自國泰綜合證券 2026 歷史資料 • 實際申報請以所得稅申報系統載入之扣繳憑單為準</p>
+  </footer>
+
+  <!-- ==================== 應用程式核心邏輯腳本 ==================== -->
+  <script>
+    const portfolioData = {
+      baseDate: "2026/11/06",
+      actualDividend2026: 27121,
+      target2026: 400000,
+      monthlyDeposit: 10000,
+      deductionDay: 13,
+      holdings: [
+        { code: "00881", name: "國泰台灣科技龍頭", type: "ETF", drip: true, shares: 2388, avgPrice: 31.34, marketPrice: 40.13, cost: 74839, value: 95697, pnl: 20858, roi: 27.87, dividend: 16139, freq: "半年配" },
+        { code: "00919", name: "群益台灣精選高息", type: "ETF", drip: true, shares: 2454, avgPrice: 24.12, marketPrice: 30.14, cost: 59246, value: 73867, pnl: 14621, roi: 24.68, dividend: 9538, freq: "季配" },
+        { code: "00701", name: "國泰股利精選30", type: "ETF", drip: true, shares: 1637, avgPrice: 29.57, marketPrice: 41.52, cost: 48468, value: 67873, pnl: 19405, roi: 40.04, dividend: 6914, freq: "半年配" },
+        { code: "00929", name: "復華台灣科技優息", type: "ETF", drip: true, shares: 1428, avgPrice: 21.34, marketPrice: 24.28, cost: 30519, value: 34623, pnl: 4104, roi: 13.45, dividend: 3064, freq: "月配" },
+        { code: "00991A", name: "主動復華未來50", type: "主動ETF", drip: false, shares: 1450, avgPrice: 15.98, marketPrice: 12.77, cost: 23167, value: 18491, pnl: -4676, roi: -20.18, dividend: 770, freq: "主動評價" },
+        { code: "2731", name: "雄獅", type: "個股", drip: false, shares: 130, avgPrice: 148.88, marketPrice: 135.50, cost: 19368, value: 17556, pnl: -1812, roi: -9.36, dividend: 128, freq: "年配" },
+        { code: "2330", name: "台積電", type: "零股", drip: false, shares: 7, avgPrice: 2057.14, marketPrice: 2135.00, cost: 14407, value: 14894, pnl: 487, roi: 3.38, dividend: 84, freq: "季配" },
+        { code: "0050", name: "元大台灣50", type: "ETF", drip: true, shares: 148, avgPrice: 102.59, marketPrice: 92.50, cost: 15184, value: 13657, pnl: -1527, roi: -10.06, dividend: 24, freq: "半年配" },
+        { code: "5904", name: "寶雅*", type: "個股", drip: false, shares: 180, avgPrice: 60.53, marketPrice: 74.00, cost: 10897, value: 13271, pnl: 2374, roi: 21.79, dividend: 382, freq: "年配" },
+        { code: "00403A", name: "主動統一升級50", type: "主動ETF", drip: false, shares: 200, avgPrice: 10.27, marketPrice: 8.00, cost: 2055, value: 1599, pnl: -456, roi: -22.19, dividend: 0, freq: "季配" }
+      ],
+      actualDividends: [
+        { exDate: "2026-12-10", payDate: "2027-01-07", code: "2330", name: "台積電", shares: 7, dps: 7.0, amount: 49, status: "即將除息" },
+        { exDate: "2026-10-21", payDate: "2026-11-16", code: "00929", name: "復華台灣科技優息", shares: 1428, dps: 0.38, amount: 542, status: "已除息待發" },
+        { exDate: "2026-09-17", payDate: "2026-10-16", code: "00929", name: "復華台灣科技優息", shares: 1378, dps: 0.38, amount: 523, status: "已發放" },
+        { exDate: "2026-09-16", payDate: "2026-10-15", code: "00919", name: "群益台灣精選高息", shares: 2297, dps: 1.10, amount: 2526, status: "已發放" },
+        { exDate: "2026-09-16", payDate: "2026-10-08", code: "2330", name: "台積電", shares: 7, dps: 7.0, amount: 49, status: "已發放" },
+        { exDate: "2026-08-19", payDate: "2026-09-14", code: "00929", name: "復華台灣科技優息", shares: 1327, dps: 0.38, amount: 504, status: "已發放" },
+        { exDate: "2026-08-18", payDate: "2026-09-11", code: "00701", name: "國泰股利精選30", shares: 1483, dps: 1.60, amount: 2372, status: "已發放" },
+        { exDate: "2026-08-18", payDate: "2026-09-11", code: "00881", name: "國泰台灣科技龍頭", shares: 2096, dps: 4.60, amount: 9641, status: "已發放" },
+        { exDate: "2026-07-21", payDate: "2026-08-10", code: "0050", name: "元大台灣50", shares: 40, dps: 0.60, amount: 24, status: "已發放" },
+        { exDate: "2026-07-21", payDate: "2026-08-14", code: "00929", name: "復華台灣科技優息", shares: 1278, dps: 0.38, amount: 485, status: "已發放" },
+        { exDate: "2026-07-21", payDate: "2026-08-14", code: "00991A", name: "主動復華未來50", shares: 1000, dps: 0.77, amount: 770, status: "已發放" },
+        { exDate: "2026-07-16", payDate: "2026-08-07", code: "5904", name: "寶雅*", shares: 15, dps: 25.5, amount: 382, status: "已發放" },
+        { exDate: "2026-06-17", payDate: "2026-07-14", code: "00929", name: "復華台灣科技優息", shares: 1231, dps: 0.26, amount: 320, status: "已發放" },
+        { exDate: "2026-06-16", payDate: "2026-07-14", code: "00919", name: "群益台灣精選高息", shares: 2130, dps: 1.00, amount: 2130, status: "已發放" },
+        { exDate: "2026-06-11", payDate: "2026-07-09", code: "2330", name: "台積電", shares: 3, dps: 6.0, amount: 18, status: "已發放" },
+        { exDate: "2026-06-09", payDate: "2026-07-01", code: "2731", name: "雄獅", shares: 10, dps: 12.8, amount: 128, status: "已發放" },
+        { exDate: "2026-05-20", payDate: "2026-06-15", code: "00929", name: "復華台灣科技優息", shares: 1144, dps: 0.13, amount: 148, status: "已發放" },
+        { exDate: "2026-04-21", payDate: "2026-05-18", code: "00929", name: "復華台灣科技優息", shares: 1005, dps: 0.13, amount: 130, status: "已發放" },
+        { exDate: "2026-03-18", payDate: "2026-04-15", code: "00929", name: "復華台灣科技優息", shares: 756, dps: 0.11, amount: 83, status: "已發放" },
+        { exDate: "2026-03-17", payDate: "2026-04-14", code: "00919", name: "群益台灣精選高息", shares: 1855, dps: 0.78, amount: 1446, status: "已發放" },
+        { exDate: "2026-03-17", payDate: "2026-04-09", code: "2330", name: "台積電", shares: 2, dps: 6.0, amount: 12, status: "已發放" },
+        { exDate: "2026-03-03", payDate: "2026-03-27", code: "00929", name: "復華台灣科技優息", shares: 705, dps: 0.10, amount: 70, status: "已發放" },
+        { exDate: "2026-01-20", payDate: "2026-02-12", code: "00701", name: "國泰股利精選30", shares: 1217, dps: 0.70, amount: 851, status: "已發放" },
+        { exDate: "2026-01-20", payDate: "2026-02-12", code: "00881", name: "國泰台灣科技龍頭", shares: 1458, dps: 2.65, amount: 3863, status: "已發放" },
+        { exDate: "2026-01-20", payDate: "2026-02-13", code: "00929", name: "復華台灣科技優息", shares: 554, dps: 0.10, amount: 55, status: "已發放" }
+      ],
+      transactions: [
+        { date: "2026/11/05", code: "00881", name: "國泰台灣科技龍頭", action: "現買", shares: 20, price: 43.0, amount: 860, fee: 1, netAmount: -861, orderNo: "k01kQ" },
+        { date: "2026/11/05", code: "0050", name: "元大台灣50", action: "現買", shares: 10, price: 98.0, amount: 980, fee: 1, netAmount: -981, orderNo: "k01mj" },
+        { date: "2026/11/05", code: "00991A", name: "主動復華未來50", action: "現買", shares: 50, price: 14.0, amount: 700, fee: 1, netAmount: -701, orderNo: "k01m0" }
+      ]
+    };
+
+    // ==================== 字級大小 5 段調整邏輯 (100% ~ 150%) ====================
+    let currentFontLevel = 1;
+
+    const fontLevelInfo = {
+      1: { name: '等級 1 (標準原級 100%)', badge: '100%', chartFont: 12 },
+      2: { name: '等級 2 (舒適微大 112.5%)', badge: '112%', chartFont: 13.5 },
+      3: { name: '等級 3 (清晰中大 125.0%)', badge: '125%', chartFont: 15 },
+      4: { name: '等級 4 (明顯放大 137.5%)', badge: '137%', chartFont: 16.5 },
+      5: { name: '等級 5 (超大特大 150.0%)', badge: '150%', chartFont: 18 }
+    };
+
+    function setFontLevel(level) {
+      level = Math.max(1, Math.min(5, parseInt(level) || 1));
+      currentFontLevel = level;
+      document.documentElement.setAttribute('data-font-level', String(level));
+      try {
+        localStorage.setItem('myinvest_font_level', String(level));
+      } catch (e) {
+        console.warn('localStorage error:', e);
+      }
+
+      // 更新 UI 狀態
+      const info = fontLevelInfo[level] || fontLevelInfo[1];
+      const titleEl = document.getElementById('fontLevelTitle');
+      if (titleEl) titleEl.textContent = info.name;
+
+      const desktopBadge = document.getElementById('desktopFontLevelBadge');
+      if (desktopBadge) desktopBadge.textContent = info.badge;
+
+      // 更新 5 階按鈕高亮樣式
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.getElementById(`fontBtn-${i}`);
+        if (btn) {
+          if (i === level) {
+            btn.className = 'font-level-btn py-2 px-1 rounded-lg text-xs font-bold transition-all text-center bg-blue-600 text-white shadow-lg shadow-blue-500/40 ring-1 ring-blue-400 scale-[1.02]';
+          } else {
+            btn.className = 'font-level-btn py-2 px-1 rounded-lg text-xs font-medium transition-all text-center text-slate-300 hover:text-white hover:bg-slate-800/80';
+          }
+        }
+      }
+
+      // 更新步進按鈕停用狀態
+      const stepDownBtn = document.getElementById('fontStepDownBtn');
+      const stepUpBtn = document.getElementById('fontStepUpBtn');
+      if (stepDownBtn) stepDownBtn.disabled = (level === 1);
+      if (stepUpBtn) stepUpBtn.disabled = (level === 5);
+
+      // 同步微調 Chart.js 圖表字體
+      updateChartsFontSize(level);
+    }
+
+    function stepFontLevel(delta) {
+      setFontLevel(currentFontLevel + delta);
+    }
+
+    function toggleFontSizeModal(show) {
+      const modal = document.getElementById('fontSizeModal');
+      if (!modal) return;
+      if (show) {
+        modal.classList.remove('hidden');
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function updateChartsFontSize(level) {
+      const info = fontLevelInfo[level] || fontLevelInfo[1];
+      if (typeof Chart !== 'undefined' && Chart.defaults) {
+        Chart.defaults.font.size = info.chartFont;
+      }
+      if (allocChartInstance) allocChartInstance.update();
+      if (pnlChartInstance) pnlChartInstance.update();
+      if (monthlyDividendChartInstance) monthlyDividendChartInstance.update();
+    }
+
+    let currentSort = { column: 'value', ascending: false };
+    let currentViewMode = window.innerWidth < 768 ? 'cards' : 'table';
+    let allocChartInstance = null;
+    let pnlChartInstance = null;
+    let monthlyDividendChartInstance = null;
+    let currentAllocMode = 'holdings';
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('tab-active');
+        btn.classList.add('text-slate-300');
+      });
+
+      document.getElementById(`${tabId}-content`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`nav-${tabId}`);
+      activeBtn.classList.add('tab-active');
+      activeBtn.classList.remove('text-slate-300');
+
+      if (tabId === 'tab2' && !monthlyDividendChartInstance) {
+        renderMonthlyDividendChart();
+      }
+    }
+
+    function setViewMode(mode) {
+      currentViewMode = mode;
+      const cardContainer = document.getElementById('holdingsCardContainer');
+      const tableContainer = document.getElementById('holdingsTableContainer');
+      const btnCards = document.getElementById('viewBtnCards');
+      const btnTable = document.getElementById('viewBtnTable');
+
+      if (mode === 'cards') {
+        cardContainer.classList.remove('hidden');
+        tableContainer.classList.add('hidden');
+        btnCards.className = 'px-2.5 py-1 rounded-md text-xs font-bold transition-all bg-blue-600 text-white shadow-sm flex items-center gap-1';
+        btnTable.className = 'px-2.5 py-1 rounded-md text-xs font-medium transition-all text-slate-300 hover:text-white flex items-center gap-1';
+      } else {
+        cardContainer.classList.add('hidden');
+        tableContainer.classList.remove('hidden');
+        btnCards.className = 'px-2.5 py-1 rounded-md text-xs font-medium transition-all text-slate-300 hover:text-white flex items-center gap-1';
+        btnTable.className = 'px-2.5 py-1 rounded-md text-xs font-bold transition-all bg-blue-600 text-white shadow-sm flex items-center gap-1';
+      }
+    }
+
+    function handleSortSelect() {
+      const selectVal = document.getElementById('sortSelector').value;
+      const [col, dir] = selectVal.split('_');
+      currentSort.column = col;
+      currentSort.ascending = (dir === 'asc');
+      renderHoldings();
+    }
+
+    function getFilteredAndSortedHoldings() {
+      const filterValue = document.getElementById('filterType').value;
+
+      let filtered = portfolioData.holdings.filter(item => {
+        if (filterValue === 'ALL') return true;
+        if (filterValue === 'ETF') return item.type.includes('ETF');
+        if (filterValue === 'STOCK') return item.type === '個股' || item.type === '零股';
+        if (filterValue === 'DRIP') return item.drip === true;
+        return true;
+      });
+
+      filtered.sort((a, b) => {
+        let valA = a[currentSort.column];
+        let valB = b[currentSort.column];
+        if (typeof valA === 'string') {
+          return currentSort.ascending 
+            ? valA.localeCompare(valB, 'zh-Hant') 
+            : valB.localeCompare(valA, 'zh-Hant');
+        }
+        return currentSort.ascending ? valA - valB : valB - valA;
+      });
+
+      return filtered;
+    }
+
+    function renderHoldings() {
+      const filtered = getFilteredAndSortedHoldings();
+      renderHoldingsCards(filtered);
+      renderHoldingsTable(filtered);
+    }
+
+    // 手機卡片渲染
+    function renderHoldingsCards(items) {
+      const container = document.getElementById('holdingsCardContainer');
+      container.innerHTML = items.map(item => {
+        const pnlClass = item.pnl >= 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold';
+        const pnlPrefix = item.pnl > 0 ? '+' : '';
+        const badgeType = item.type.includes('ETF') ? 'badge-etf' : 'badge-stock';
+        const dripBadge = item.drip ? '<span class="badge-drip text-[10px] px-1.5 py-0.2 rounded font-bold">再投入</span>' : '';
+
+        return `
+          <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 shadow-sm space-y-2.5 hover:border-blue-500/50 transition-all">
+            <!-- 標題與標籤 -->
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5">
+                <span class="text-blue-400 font-mono font-bold text-sm sm:text-base">${item.code}</span>
+                <span class="text-white font-bold text-sm sm:text-base">${item.name}</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <span class="${badgeType} text-[10px] px-1.5 py-0.5 rounded font-bold">${item.type}</span>
+                ${dripBadge}
+              </div>
+            </div>
+
+            <!-- 現值與未實現損益核心數據 -->
+            <div class="grid grid-cols-2 gap-2 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+              <div>
+                <span class="text-[11px] text-slate-400 block font-medium">現值 (TWD)</span>
+                <span class="text-base sm:text-lg font-mono font-extrabold text-white">$${item.value.toLocaleString()}</span>
+              </div>
+              <div class="text-right">
+                <span class="text-[11px] text-slate-400 block font-medium">未實現損益</span>
+                <span class="text-base sm:text-lg font-mono ${pnlClass}">${pnlPrefix}$${item.pnl.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <!-- 股數、成本均價、現價、報酬率 -->
+            <div class="grid grid-cols-4 gap-1.5 text-center text-xs font-mono pt-1">
+              <div class="bg-slate-900/50 py-1 px-1 rounded border border-slate-800/50">
+                <span class="text-[10px] text-slate-400 block">股數</span>
+                <span class="text-slate-100 font-bold">${item.shares.toLocaleString()}</span>
+              </div>
+              <div class="bg-slate-900/50 py-1 px-1 rounded border border-slate-800/50">
+                <span class="text-[10px] text-slate-400 block">均價</span>
+                <span class="text-slate-300">$${item.avgPrice.toLocaleString()}</span>
+              </div>
+              <div class="bg-slate-900/50 py-1 px-1 rounded border border-slate-800/50">
+                <span class="text-[10px] text-slate-400 block">市價</span>
+                <span class="text-white font-bold">$${item.marketPrice.toLocaleString()}</span>
+              </div>
+              <div class="bg-slate-900/50 py-1 px-1 rounded border border-slate-800/50">
+                <span class="text-[10px] text-slate-400 block">報酬率</span>
+                <span class="${pnlClass}">${pnlPrefix}${item.roi}%</span>
+              </div>
+            </div>
+
+            <!-- 累計配息與配息週期小標 -->
+            <div class="flex justify-between items-center text-xs pt-1 border-t border-slate-700/40 text-slate-300">
+              <span class="text-[11px]">週期：<strong class="text-blue-300">${item.freq}</strong></span>
+              <span class="text-[11px]">累計配息：<strong class="text-amber-300 font-mono font-bold">$${item.dividend.toLocaleString()}</strong></span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 電腦表格渲染
+    function renderHoldingsTable(items) {
+      const tbody = document.getElementById('holdingsTableBody');
+      tbody.innerHTML = items.map(item => {
+        const pnlClass = item.pnl >= 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold';
+        const pnlPrefix = item.pnl > 0 ? '+' : '';
+        const badgeType = item.type.includes('ETF') ? 'badge-etf' : 'badge-stock';
+        const dripBadge = item.drip ? '<span class="badge-drip text-[10px] px-1.5 py-0.2 rounded font-bold ml-1">再投</span>' : '';
+
+        return `
+          <tr class="hover:bg-slate-800/70 transition-colors">
+            <td class="py-2.5 px-3.5 font-bold text-white sticky-col shadow-col-edge">
+              <div class="flex items-center gap-1.5">
+                <span class="text-blue-400 font-mono">${item.code}</span>
+                <span class="text-slate-100 font-sans">${item.name}</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-3.5">
+              <span class="${badgeType} text-xs px-2 py-0.5 rounded font-bold">${item.type}</span>
+              ${dripBadge}
+            </td>
+            <td class="py-2.5 px-3.5 text-right font-mono text-slate-100">${item.shares.toLocaleString()}</td>
+            <td class="py-2.5 px-3.5 text-right font-mono text-slate-300">$${item.avgPrice.toLocaleString()}</td>
+            <td class="py-2.5 px-3.5 text-right font-mono text-white font-bold">$${item.marketPrice.toLocaleString()}</td>
+            <td class="py-2.5 px-3.5 text-right font-mono text-slate-300">$${item.cost.toLocaleString()}</td>
+            <td class="py-2.5 px-3.5 text-right font-mono font-bold text-white">$${item.value.toLocaleString()}</td>
+            <td class="py-2.5 px-3.5 text-right font-mono ${pnlClass}">${pnlPrefix}$${item.pnl.toLocaleString()}</td>
+            <td class="py-2.5 px-3.5 text-right font-mono ${pnlClass}">${pnlPrefix}${item.roi}%</td>
+            <td class="py-2.5 px-3.5 text-right font-mono text-amber-300 font-bold">$${item.dividend.toLocaleString()}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function sortTable(col) {
+      if (currentSort.column === col) {
+        currentSort.ascending = !currentSort.ascending;
+      } else {
+        currentSort.column = col;
+        currentSort.ascending = (col === 'code' || col === 'name') ? true : false;
+      }
+
+      const selector = document.getElementById('sortSelector');
+      const targetVal = `${col}_${currentSort.ascending ? 'asc' : 'desc'}`;
+      for (let opt of selector.options) {
+        if (opt.value === targetVal) {
+          selector.value = targetVal;
+          break;
+        }
+      }
+
+      renderHoldings();
+    }
+
+    function renderDividendHistoryTable() {
+      const tbody = document.getElementById('dividendHistoryBody');
+      tbody.innerHTML = portfolioData.actualDividends.map(item => {
+        const statusBadge = item.status === '已發放'
+          ? '<span class="text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded text-[11px] font-bold border border-emerald-400/30">已入帳</span>'
+          : (item.status === '即將除息'
+            ? '<span class="text-purple-200 bg-purple-500/20 px-1.5 py-0.5 rounded text-[11px] font-bold border border-purple-400/30">12月除息</span>'
+            : '<span class="text-amber-200 bg-amber-500/20 px-1.5 py-0.5 rounded text-[11px] font-bold border border-amber-400/30">待發放</span>');
+
+        return `
+          <tr class="hover:bg-slate-800/70 transition-colors">
+            <td class="py-2 px-3 font-bold text-white">${item.payDate}</td>
+            <td class="py-2 px-3 text-slate-400">${item.exDate}</td>
+            <td class="py-2 px-3 font-sans font-bold text-slate-100">
+              <span class="text-blue-400 font-mono">${item.code}</span> ${item.name}
+            </td>
+            <td class="py-2 px-3 text-right text-slate-200">${item.shares.toLocaleString()} 股</td>
+            <td class="py-2 px-3 text-right text-slate-300">$${item.dps}</td>
+            <td class="py-2 px-3 text-right font-bold text-amber-300">+$${item.amount.toLocaleString()}</td>
+            <td class="py-2 px-3 text-center">${statusBadge}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderAllocationChart(mode = 'holdings') {
+      currentAllocMode = mode;
+      const ctx = document.getElementById('allocationChart').getContext('2d');
+      if (allocChartInstance) allocChartInstance.destroy();
+
+      const isMobile = window.innerWidth < 768;
+      let labels = [];
+      let data = [];
+      let backgroundColors = [
+        '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
+        '#06b6d4', '#64748b', '#f97316', '#a855f7', '#14b8a6'
+      ];
+
+      if (mode === 'holdings') {
+        labels = portfolioData.holdings.map(h => `${h.code} ${h.name}`);
+        data = portfolioData.holdings.map(h => h.value);
+      } else {
+        const etfVal = portfolioData.holdings.filter(h => h.type.includes('ETF')).reduce((acc, h) => acc + h.value, 0);
+        const stockVal = portfolioData.holdings.filter(h => !h.type.includes('ETF')).reduce((acc, h) => acc + h.value, 0);
+        labels = ['ETF 部位 (87.4%)', '個股部位 (12.6%)'];
+        data = [etfVal, stockVal];
+        backgroundColors = ['#3b82f6', '#f59e0b'];
+      }
+
+      allocChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: backgroundColors,
+            borderColor: '#0b1120',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: isMobile ? 'bottom' : 'right',
+              labels: { 
+                color: '#f1f5f9', 
+                font: { size: isMobile ? 11 : 12, weight: 'bold' }, 
+                boxWidth: isMobile ? 10 : 14, 
+                padding: isMobile ? 6 : 10 
+              }
+            },
+            tooltip: {
+              titleFont: { size: 12 },
+              bodyFont: { size: 12 },
+              callbacks: {
+                label: function(context) {
+                  const val = context.raw || 0;
+                  const total = portfolioData.holdings.reduce((sum, h) => sum + h.value, 0);
+                  const pct = ((val / total) * 100).toFixed(1);
+                  return ` $${val.toLocaleString()} (${pct}%)`;
+                }
+              }
+            }
+          },
+          cutout: isMobile ? '55%' : '62%'
+        }
+      });
+    }
+
+    function setAllocationMode(mode) {
+      document.getElementById('btnAllocHolding').className = mode === 'holdings' ? 'px-2 py-1 rounded-md bg-blue-600 text-white font-bold text-xs' : 'px-2 py-1 rounded-md bg-slate-800 text-slate-300 hover:text-white font-medium text-xs';
+      document.getElementById('btnAllocType').className = mode === 'type' ? 'px-2 py-1 rounded-md bg-blue-600 text-white font-bold text-xs' : 'px-2 py-1 rounded-md bg-slate-800 text-slate-300 hover:text-white font-medium text-xs';
+      renderAllocationChart(mode);
+    }
+
+    function renderPnlBarChart() {
+      const ctx = document.getElementById('pnlBarChart').getContext('2d');
+      if (pnlChartInstance) pnlChartInstance.destroy();
+
+      const sorted = [...portfolioData.holdings].sort((a, b) => b.pnl - a.pnl);
+      const isMobile = window.innerWidth < 640;
+      const labels = sorted.map(h => isMobile ? h.code : (h.name.length > 5 ? h.name.slice(0, 4) + '..' : h.name));
+      const data = sorted.map(h => h.pnl);
+      const bgColors = sorted.map(h => h.pnl >= 0 ? 'rgba(248, 113, 113, 0.9)' : 'rgba(52, 211, 153, 0.9)');
+
+      pnlChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '損益 (TWD)',
+            data: data,
+            backgroundColor: bgColors,
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              titleFont: { size: 12 },
+              bodyFont: { size: 12 },
+              callbacks: {
+                title: function(items) {
+                  const idx = items[0].dataIndex;
+                  return `${sorted[idx].code} ${sorted[idx].name}`;
+                },
+                label: function(context) {
+                  const val = context.raw;
+                  return ` 損益: ${val > 0 ? '+' : ''}$${val.toLocaleString()}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#f1f5f9', font: { size: isMobile ? 10 : 12, weight: 'bold' } },
+              grid: { display: false }
+            },
+            y: {
+              ticks: {
+                color: '#cbd5e1',
+                font: { size: 11 },
+                callback: function(value) { return '$' + (value / 1000) + 'k'; }
+              },
+              grid: { color: 'rgba(51, 65, 85, 0.35)' }
+            }
+          }
+        }
+      });
+    }
+
+    function renderMonthlyDividendChart() {
+      const ctx = document.getElementById('monthlyDividendChart').getContext('2d');
+      if (monthlyDividendChartInstance) monthlyDividendChartInstance.destroy();
+
+      const isMobile = window.innerWidth < 640;
+      const months = isMobile ? ['1','2','3','4','5','6','7','8','9','10','11','12'].map(m => m + '月') : ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+      const monthlyData = [0, 4769, 70, 1541, 130, 148, 2596, 1661, 12517, 3098, 542, 0];
+      const bgColors = monthlyData.map(v => v >= 1000 ? 'rgba(245, 158, 11, 0.95)' : 'rgba(59, 130, 246, 0.7)');
+
+      monthlyDividendChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: months,
+          datasets: [{
+            label: '實領股利 (TWD)',
+            data: monthlyData,
+            backgroundColor: bgColors,
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              titleFont: { size: 12 },
+              bodyFont: { size: 12 },
+              callbacks: {
+                label: function(context) {
+                  return ` 實領股息: $${context.raw.toLocaleString()} 元 ${context.raw >= 1000 ? '🎉 破千' : ''}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#f8fafc', font: { size: isMobile ? 10 : 12, weight: 'bold' } },
+              grid: { display: false }
+            },
+            y: {
+              ticks: {
+                color: '#e2e8f0',
+                font: { size: 11 },
+                callback: function(value) { return isMobile ? '$' + (value/1000) + 'k' : '$' + value.toLocaleString(); }
+              },
+              grid: { color: 'rgba(51, 65, 85, 0.35)' }
+            }
+          }
+        }
+      });
+    }
+
+    function calculateTax(taxRate) {
+      document.querySelectorAll('.tax-rate-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'border-blue-500', 'text-white', 'shadow-md');
+        btn.classList.add('bg-slate-800', 'border-slate-700', 'text-slate-200');
+      });
+      const activeBtn = document.getElementById(`taxBtn${taxRate}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-blue-600', 'border-blue-500', 'text-white', 'shadow-md');
+        activeBtn.classList.remove('bg-slate-800', 'border-slate-700', 'text-slate-200');
+      }
+
+      const estimated54C = Math.round(portfolioData.actualDividend2026 * 0.35);
+      const credit85 = Math.round(estimated54C * 0.085);
+      const taxDue = Math.round(estimated54C * (taxRate / 100));
+      const netTax = taxDue - credit85;
+
+      document.getElementById('taxableAmountDisplay').innerText = `$${estimated54C.toLocaleString()}`;
+      document.getElementById('taxCreditDisplay').innerText = `+$${credit85.toLocaleString()}`;
+
+      const finalDisplay = document.getElementById('taxFinalDisplay');
+      const noteDisplay = document.getElementById('taxNoteDisplay');
+
+      if (netTax <= 0) {
+        const refund = Math.abs(netTax);
+        finalDisplay.className = "text-xl sm:text-2xl font-bold text-emerald-400 font-mono";
+        finalDisplay.innerText = `預估退稅 +$${refund.toLocaleString()} 元`;
+        noteDisplay.className = "text-[11px] text-emerald-300 block mt-1 font-bold";
+        noteDisplay.innerText = `8.5% 抵減大於您的級距 ${taxRate}%，申報時享有退稅小確幸！`;
+      } else {
+        finalDisplay.className = "text-xl sm:text-2xl font-bold text-amber-300 font-mono";
+        finalDisplay.innerText = `實質補稅 $${netTax.toLocaleString()} 元`;
+        noteDisplay.className = "text-[11px] text-amber-300 block mt-1 font-bold";
+        noteDisplay.innerText = `扣除 8.5% 抵減後，僅需負擔微額差額 ${(taxRate - 8.5).toFixed(1)}%。`;
+      }
+    }
+
+    const monthlyScheduleData = [
+      {
+        month: 1,
+        title: "1 月",
+        tag: "歲末除息",
+        tagClass: "bg-blue-500/20 text-blue-300 border border-blue-400/30",
+        isMajor: true,
+        isOver1000: false,
+        payingHoldings: [
+          { code: "00929", name: "復華台灣科技優息", type: "月配", note: "12月除息於1月中入帳" }
+        ],
+        exHoldings: [
+          { code: "00881", name: "國泰科技龍頭", type: "半年配", note: "上半年除息" },
+          { code: "00701", name: "國泰股利精選", type: "半年配", note: "上半年除息" },
+          { code: "0050", name: "元大台灣50", type: "半年配", note: "上半年除息" },
+          { code: "00929", name: "復華科技優息", type: "月配", note: "常態月除息" }
+        ],
+        actual2026: "$0 元",
+        actualNum: 0,
+        flowDesc: "00881、00701 重磅除息月！配息大紅包將於次月（2月）新春發放入帳。"
+      },
+      {
+        month: 2,
+        title: "2 月",
+        tag: "💰 新春紅包",
+        tagClass: "bg-amber-500/20 text-amber-300 border border-amber-400/40",
+        isMajor: true,
+        isOver1000: true,
+        payingHoldings: [
+          { code: "00881", name: "國泰科技龍頭", type: "半年配", note: "實領 $3,863" },
+          { code: "00701", name: "國泰股利精選", type: "半年配", note: "實領 $851" },
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $55" }
+        ],
+        exHoldings: [],
+        actual2026: "$4,769 元",
+        actualNum: 4769,
+        flowDesc: "上半年大豐收！00881 + 00701 雙龍頭新春開花，開年即獲近 5,000 元大紅包！"
+      },
+      {
+        month: 3,
+        title: "3 月",
+        tag: "春季除息",
+        tagClass: "bg-blue-500/20 text-blue-300 border border-blue-400/30",
+        isMajor: true,
+        isOver1000: false,
+        payingHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $70" }
+        ],
+        exHoldings: [
+          { code: "00919", name: "群益精選高息", type: "季配", note: "第1季除息" },
+          { code: "2330", name: "台積電", type: "季配", note: "第1季除息" },
+          { code: "00929", name: "復華科技優息", type: "月配", note: "常態月除息" }
+        ],
+        actual2026: "$70 元",
+        actualNum: 70,
+        flowDesc: "00919 與台積電第 1 季除息，入帳現金流將於 4 月中旬發放。"
+      },
+      {
+        month: 4,
+        title: "4 月",
+        tag: "💰 春季高息",
+        tagClass: "bg-amber-500/20 text-amber-300 border border-amber-400/40",
+        isMajor: true,
+        isOver1000: true,
+        payingHoldings: [
+          { code: "00919", name: "群益精選高息", type: "季配", note: "實領 $1,446" },
+          { code: "2330", name: "台積電", type: "季配", note: "實領 $12" },
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $83" }
+        ],
+        exHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "常態月除息" }
+        ],
+        actual2026: "$1,541 元",
+        actualNum: 1541,
+        flowDesc: "00919 第1季配息入帳主力（單檔破千），是春季最關鍵的被動現金流支柱！"
+      },
+      {
+        month: 5,
+        title: "5 月",
+        tag: "月配固樁",
+        tagClass: "bg-slate-700/60 text-slate-300 border border-slate-600/40",
+        isMajor: false,
+        isOver1000: false,
+        payingHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $130" }
+        ],
+        exHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "常態月除息" }
+        ],
+        actual2026: "$130 元",
+        actualNum: 130,
+        flowDesc: "月配 00929 持續再投入滾動，零股數量穩步攀升，持續奠定股息基底。"
+      },
+      {
+        month: 6,
+        title: "6 月",
+        tag: "除息旺季開跑",
+        tagClass: "bg-blue-500/20 text-blue-300 border border-blue-400/30",
+        isMajor: true,
+        isOver1000: false,
+        payingHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $148" }
+        ],
+        exHoldings: [
+          { code: "00919", name: "群益精選高息", type: "季配", note: "第2季除息" },
+          { code: "2731", name: "雄獅", type: "年配", note: "年度除息" },
+          { code: "2330", name: "台積電", type: "季配", note: "第2季除息" }
+        ],
+        actual2026: "$148 元",
+        actualNum: 148,
+        flowDesc: "台股年中除息旺季吹響號角！00919、雄獅、台積電密集除息，7 月迎接大入帳！"
+      },
+      {
+        month: 7,
+        title: "7 月",
+        tag: "💰 年中豐收",
+        tagClass: "bg-amber-500/20 text-amber-300 border border-amber-400/40",
+        isMajor: true,
+        isOver1000: true,
+        payingHoldings: [
+          { code: "00919", name: "群益精選高息", type: "季配", note: "實領 $2,130" },
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $320" },
+          { code: "2731", name: "雄獅", type: "年配", note: "實領 $128" },
+          { code: "2330", name: "台積電", type: "季配", note: "實領 $18" }
+        ],
+        exHoldings: [
+          { code: "0050", name: "元大台灣50", type: "半年配", note: "下半年除息" },
+          { code: "00991A", name: "主動未來50", type: "主動ETF", note: "除息" },
+          { code: "5904", name: "寶雅*", type: "年配", note: "高息除息" }
+        ],
+        actual2026: "$2,596 元",
+        actualNum: 2596,
+        flowDesc: "00919 第2季配發 $2,130 領銜，搭配雄獅與台積電，年中豐收達 $2,596 元！"
+      },
+      {
+        month: 8,
+        title: "8 月",
+        tag: "💰 旺季紅利",
+        tagClass: "bg-amber-500/20 text-amber-300 border border-amber-400/40",
+        isMajor: true,
+        isOver1000: true,
+        payingHoldings: [
+          { code: "00991A", name: "主動未來50", type: "主動ETF", note: "實領 $770" },
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $485" },
+          { code: "5904", name: "寶雅*", type: "年配", note: "實領 $382" },
+          { code: "0050", name: "元大台灣50", type: "半年配", note: "實領 $24" }
+        ],
+        exHoldings: [
+          { code: "00881", name: "國泰科技龍頭", type: "半年配", note: "下半年除息" },
+          { code: "00701", name: "國泰股利精選", type: "半年配", note: "下半年除息" }
+        ],
+        actual2026: "$1,661 元",
+        actualNum: 1661,
+        flowDesc: "主動 00991A 與高價股寶雅發威；且 00881 與 00701 於本月除息，蓄勢 9 月超級頂峰！"
+      },
+      {
+        month: 9,
+        title: "9 月",
+        tag: "🏆 現金流王者",
+        tagClass: "bg-rose-500/20 text-rose-300 border border-rose-400/40",
+        isMajor: true,
+        isOver1000: true,
+        payingHoldings: [
+          { code: "00881", name: "國泰科技龍頭", type: "半年配", note: "實領 $9,641 (年度之王)" },
+          { code: "00701", name: "國泰股利精選", type: "半年配", note: "實領 $2,372" },
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $504" }
+        ],
+        exHoldings: [
+          { code: "00919", name: "群益精選高息", type: "季配", note: "第3季除息" },
+          { code: "2330", name: "台積電", type: "季配", note: "第3季除息" }
+        ],
+        actual2026: "$12,517 元",
+        actualNum: 12517,
+        flowDesc: "00881 豪氣大配 $9,641 + 00701 貢獻 $2,372，單月狂攬破 1.2 萬元，為全年最強現金流王者月！"
+      },
+      {
+        month: 10,
+        title: "10 月",
+        tag: "💰 秋季主力",
+        tagClass: "bg-amber-500/20 text-amber-300 border border-amber-400/40",
+        isMajor: true,
+        isOver1000: true,
+        payingHoldings: [
+          { code: "00919", name: "群益精選高息", type: "季配", note: "實領 $2,526" },
+          { code: "00929", name: "復華科技優息", type: "月配", note: "實領 $523" },
+          { code: "2330", name: "台積電", type: "季配", note: "實領 $49" }
+        ],
+        exHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "10/21 除息" }
+        ],
+        actual2026: "$3,098 元",
+        actualNum: 3098,
+        flowDesc: "00919 第3季入帳高達 $2,526 元，00929 月配突破 $520 元，秋季獲利實質入袋超豐盛！"
+      },
+      {
+        month: 11,
+        title: "11 月",
+        tag: "深秋續航",
+        tagClass: "bg-slate-700/60 text-slate-300 border border-slate-600/40",
+        isMajor: false,
+        isOver1000: false,
+        payingHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "預估 11/16 發放 $542" }
+        ],
+        exHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "11月中除息" }
+        ],
+        actual2026: "約 $542 元 (待發)",
+        actualNum: 542,
+        flowDesc: "00929 於 10/21 除息之股息將於 11/16 撥付入帳，股息再投入推升持股達 1,428 股。"
+      },
+      {
+        month: 12,
+        title: "12 月",
+        tag: "年終除息季",
+        tagClass: "bg-blue-500/20 text-blue-300 border border-blue-400/30",
+        isMajor: true,
+        isOver1000: false,
+        payingHoldings: [
+          { code: "00929", name: "復華科技優息", type: "月配", note: "預估 12/15 入帳" }
+        ],
+        exHoldings: [
+          { code: "00919", name: "群益精選高息", type: "季配", note: "第4季除息" },
+          { code: "2330", name: "台積電", type: "季配", note: "預估 12/10 除息" }
+        ],
+        actual2026: "約 $550 元",
+        actualNum: 550,
+        flowDesc: "台積電預估 12/10 除息、00919 第四季除息，為 2027 年 1 月新春入帳奠定強勁動能！"
+      }
+    ];
+
+    let currentScheduleFilter = 'ALL';
+
+    function renderMonthlySchedule() {
+      const filtered = monthlyScheduleData.filter(item => {
+        if (currentScheduleFilter === 'OVER1000') return item.isOver1000;
+        if (currentScheduleFilter === 'MAJOR') return item.isMajor;
+        return true;
+      });
+
+      renderMonthlyScheduleCards(filtered);
+      renderMonthlyScheduleTable(filtered);
+    }
+
+    // 手機版 1~12 月日程卡片
+    function renderMonthlyScheduleCards(items) {
+      const container = document.getElementById('monthlyScheduleCardContainer');
+      if (!container) return;
+
+      container.innerHTML = items.map(item => {
+        const payingBadges = item.payingHoldings.length > 0
+          ? item.payingHoldings.map(h => `
+              <div class="inline-flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 px-2 py-0.5 rounded text-[11px] mr-1 mb-1">
+                <span class="text-blue-400 font-bold">${h.code}</span>
+                <span class="text-slate-200">${h.name}</span>
+                <span class="text-amber-300 font-mono">${h.note}</span>
+              </div>
+            `).join('')
+          : '<span class="text-xs text-slate-500">無發放入帳</span>';
+
+        const exBadges = item.exHoldings.length > 0
+          ? item.exHoldings.map(h => `
+              <div class="inline-flex items-center gap-1 bg-purple-950/40 border border-purple-500/30 px-2 py-0.5 rounded text-[11px] mr-1 mb-1">
+                <span class="text-purple-300 font-bold">${h.code}</span>
+                <span class="text-slate-200">${h.name}</span>
+                <span class="text-purple-200 text-[10px]">(${h.note})</span>
+              </div>
+            `).join('')
+          : '<span class="text-xs text-slate-500">無除息排程</span>';
+
+        const amountDisplay = item.actualNum >= 1000
+          ? `<span class="text-amber-300 font-extrabold font-mono text-base">+${item.actual2026}</span>
+             <span class="text-[10px] bg-amber-500/20 text-amber-200 px-1.5 py-0.2 rounded border border-amber-400/30 font-bold">🌟 破千</span>`
+          : `<span class="text-slate-300 font-mono text-sm">${item.actual2026}</span>`;
+
+        return `
+          <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 shadow-sm space-y-2">
+            <div class="flex justify-between items-center border-b border-slate-700/50 pb-2">
+              <div class="flex items-center gap-2">
+                <span class="text-base font-extrabold text-white">${item.title}</span>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded ${item.tagClass}">${item.tag}</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                ${amountDisplay}
+              </div>
+            </div>
+
+            <div>
+              <span class="text-[11px] font-medium text-slate-400 block mb-1">💰 入帳發放：</span>
+              <div class="flex flex-wrap">${payingBadges}</div>
+            </div>
+
+            <div>
+              <span class="text-[11px] font-medium text-purple-300 block mb-1">⏳ 當月除息：</span>
+              <div class="flex flex-wrap">${exBadges}</div>
+            </div>
+
+            <p class="text-xs text-slate-300 pt-1.5 border-t border-slate-700/40 leading-relaxed">
+              ${item.flowDesc}
+            </p>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 電腦版 1~12 月表格
+    function renderMonthlyScheduleTable(items) {
+      const tbody = document.getElementById('monthlyScheduleBody');
+      if (!tbody) return;
+
+      tbody.innerHTML = items.map(item => {
+        const payingBadges = item.payingHoldings.length > 0
+          ? item.payingHoldings.map(h => `
+              <div class="inline-flex items-center gap-1.5 bg-slate-800/90 border border-slate-700/80 px-2 py-0.5 rounded-md text-xs mb-1 mr-1">
+                <span class="text-blue-400 font-bold">${h.code}</span>
+                <span class="text-slate-200 font-semibold">${h.name}</span>
+                <span class="text-blue-300 bg-blue-500/20 px-1 py-0.2 rounded text-[11px]">${h.type}</span>
+                <span class="text-amber-300 font-mono font-bold">${h.note}</span>
+              </div>
+            `).join('')
+          : '<span class="text-xs text-slate-500 font-medium">無發放入帳</span>';
+
+        const exBadges = item.exHoldings.length > 0
+          ? item.exHoldings.map(h => `
+              <div class="inline-flex items-center gap-1.5 bg-purple-950/40 border border-purple-500/30 px-2 py-0.5 rounded-md text-xs mb-1 mr-1">
+                <span class="text-purple-300 font-bold">${h.code}</span>
+                <span class="text-slate-200">${h.name}</span>
+                <span class="text-purple-200 text-[11px]">(${h.note})</span>
+              </div>
+            `).join('')
+          : '<span class="text-xs text-slate-500 font-medium">無除息</span>';
+
+        const amountBadge = item.actualNum >= 1000
+          ? `<span class="text-amber-300 font-extrabold text-sm sm:text-base font-mono block">+${item.actual2026}</span>
+             <span class="inline-block mt-0.5 text-[11px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-200 border border-amber-400/30">🌟 破千</span>`
+          : (item.actualNum > 0
+            ? `<span class="text-slate-200 font-bold text-sm font-mono">+${item.actual2026}</span>`
+            : `<span class="text-slate-500 text-xs font-mono">${item.actual2026}</span>`);
+
+        return `
+          <tr class="hover:bg-slate-800/60 transition-colors text-sm">
+            <td class="py-3 px-3.5 align-top whitespace-nowrap">
+              <span class="text-base font-extrabold text-white block">${item.title}</span>
+              <span class="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded ${item.tagClass}">${item.tag}</span>
+            </td>
+            <td class="py-3 px-3.5 align-top">
+              <div class="flex flex-wrap items-center">${payingBadges}</div>
+            </td>
+            <td class="py-3 px-3.5 align-top">
+              <div class="flex flex-wrap items-center">${exBadges}</div>
+            </td>
+            <td class="py-3 px-3.5 align-top text-right whitespace-nowrap">
+              ${amountBadge}
+            </td>
+            <td class="py-3 px-3.5 align-top">
+              <p class="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">${item.flowDesc}</p>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function filterMonthlySchedule(mode) {
+      currentScheduleFilter = mode;
+      document.querySelectorAll('.sched-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white', 'font-bold');
+        btn.classList.add('bg-slate-800', 'text-slate-300', 'font-medium');
+      });
+      const activeBtn = document.getElementById(`schedBtn-${mode}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-blue-600', 'text-white', 'font-bold');
+        activeBtn.classList.remove('bg-slate-800', 'text-slate-300', 'font-medium');
+      }
+      renderMonthlySchedule();
+    }
+
+    // ==================== 市場開盤狀態與全自動排程抓取核心邏輯 ====================
+    let isRefreshing = false;
+    let autoRefreshTimer = null;
+    let heartbeatTimer = null;
+
+    // 取得當前台股市場時段狀態
+    function getMarketScheduleInfo() {
+      const now = new Date();
+      const day = now.getDay(); // 0: 週日, 6: 週六
+      const isWeekend = (day === 0 || day === 6);
+      const minutes = now.getHours() * 60 + now.getMinutes();
+
+      if (isWeekend) {
+        return {
+          status: 'weekend',
+          isOpen: false,
+          isPostMarket: false,
+          label: '假日休市',
+          subText: '假日休市中 • 顯示最近交易日收盤價',
+          dotClass: 'bg-slate-400',
+          badgeClass: 'bg-slate-800/90 text-slate-300 border-slate-700'
+        };
+      }
+
+      // 09:00 (540 分鐘) 前：盤前時間
+      if (minutes < 540) {
+        return {
+          status: 'pre_market',
+          isOpen: false,
+          isPostMarket: false,
+          label: '盤前準備',
+          subText: '09:00 開盤 • 顯示前一交易日收盤價',
+          dotClass: 'bg-amber-400 animate-pulse',
+          badgeClass: 'bg-amber-950/60 text-amber-300 border-amber-600/40'
+        };
+      }
+
+      // 09:00 ~ 13:30 (810 分鐘)：開盤時間 (盤中交易中)
+      if (minutes >= 540 && minutes < 810) {
+        return {
+          status: 'in_session',
+          isOpen: true,
+          isPostMarket: false,
+          label: '盤中交易中',
+          subText: '開盤 09:00-13:30 • 每 2 分鐘自動同步最新價',
+          dotClass: 'bg-emerald-400 animate-ping',
+          badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20'
+        };
+      }
+
+      // 13:30 之後：下午收盤後，抓取當天最新正式收盤價格
+      return {
+        status: 'post_market',
+        isOpen: false,
+        isPostMarket: true,
+        label: '今日已收盤',
+        subText: '今日已收盤 • 已載入當日最新收盤價',
+        dotClass: 'bg-blue-400',
+        badgeClass: 'bg-blue-950/70 text-blue-300 border-blue-500/40'
+      };
+    }
+
+    // 更新頂部市場狀態徽章與提示文字
+    function updateMarketStatusUI(customLabel = null) {
+      const info = getMarketScheduleInfo();
+      const badge = document.getElementById('marketStatusBadge');
+      const dot = document.getElementById('marketStatusDot');
+      const text = document.getElementById('marketStatusText');
+      const notice = document.getElementById('autoRefreshNotice');
+      const syncEl = document.getElementById('headerSyncTime');
+
+      if (badge && dot && text) {
+        badge.className = `inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all border ${info.badgeClass}`;
+        dot.className = `w-2 h-2 rounded-full ${info.dotClass}`;
+        text.textContent = customLabel || info.label;
+      }
+
+      if (notice) {
+        notice.textContent = `（${info.subText}）`;
+      }
+
+      if (syncEl) {
+        const lastSyncTime = localStorage.getItem('myinvest_last_sync_time');
+        if (lastSyncTime) {
+          syncEl.textContent = lastSyncTime;
+        }
+      }
+    }
+
+    function recalculateAndRender() {
+      // 1. 各標的重算現值、未實現損益、報酬率
+      portfolioData.holdings.forEach(h => {
+        const raw = Math.floor(h.shares * h.marketPrice);
+        const isEtf = h.type.includes('ETF');
+        const tax = isEtf ? Math.floor(raw * 0.001) : Math.floor(raw * 0.003);
+        const fee = Math.max(1, Math.floor(raw * 0.001425 * 0.28));
+        const adj = (h.code === '0050') ? 15 : 0;
+        h.value = raw - tax - fee - adj;
+        h.pnl = h.value - h.cost;
+        h.roi = Math.round((h.pnl / h.cost) * 10000) / 100;
+      });
+
+      // 2. 總體指標重算
+      const totalVal = portfolioData.holdings.reduce((sum, h) => sum + h.value, 0);
+      const totalCost = portfolioData.holdings.reduce((sum, h) => sum + h.cost, 0);
+      const unrealizedPnl = totalVal - totalCost;
+      const unrealizedRoi = ((unrealizedPnl / totalCost) * 100).toFixed(2);
+      const cumulativeDividend = 37049;
+      const totalReturnWithDiv = (((unrealizedPnl + cumulativeDividend) / totalCost) * 100).toFixed(2);
+      const targetGap = Math.max(0, portfolioData.target2026 - totalVal);
+      const targetProgressPct = ((totalVal / portfolioData.target2026) * 100).toFixed(2);
+      const targetGapPct = ((targetGap / portfolioData.target2026) * 100).toFixed(2);
+      const pnlPrefix = unrealizedPnl > 0 ? '+' : '';
+
+      // 3. 更新 DOM 元件
+      const headerDateEl = document.getElementById('headerBaseDate');
+      if (headerDateEl) headerDateEl.textContent = portfolioData.baseDate;
+
+      const tableDateEl = document.getElementById('tableBaseDate');
+      if (tableDateEl) tableDateEl.textContent = `（基準日：${portfolioData.baseDate}）`;
+
+      const milestoneDateEl = document.getElementById('milestoneBaseDate');
+      if (milestoneDateEl) milestoneDateEl.textContent = `基準現況 (${portfolioData.baseDate})`;
+
+      const milestoneValEl = document.getElementById('milestoneValue');
+      if (milestoneValEl) milestoneValEl.textContent = `$${totalVal.toLocaleString()} 元`;
+
+      const statCostEl = document.getElementById('statTotalCost');
+      if (statCostEl) statCostEl.textContent = `$${totalCost.toLocaleString()}`;
+
+      const milestoneDescEl = document.getElementById('milestoneDesc');
+      if (milestoneDescEl) {
+        const netTenK = (unrealizedPnl / 10000).toFixed(1);
+        const costTenK = (totalCost / 10000).toFixed(1);
+        milestoneDescEl.textContent = `成本 ${costTenK} 萬，帳面淨賺 ${unrealizedPnl >= 0 ? '+' : ''}${netTenK} 萬 (${unrealizedPnl >= 0 ? '+' : ''}${unrealizedRoi}%)`;
+      }
+
+      const targetBadgeEl = document.getElementById('targetAchieveRateBadge');
+      if (targetBadgeEl) targetBadgeEl.textContent = `達成率 ${targetProgressPct}%`;
+
+      const targetValEl = document.getElementById('targetTotalValue');
+      if (targetValEl) targetValEl.textContent = `$${totalVal.toLocaleString()}`;
+
+      const targetGapEl = document.getElementById('targetGapDesc');
+      if (targetGapEl) {
+        targetGapEl.innerHTML = `僅差 <strong class="text-amber-300 font-bold font-mono">$${targetGap.toLocaleString()}</strong>，約 ${targetGapPct}%`;
+      }
+
+      const targetProgressEl = document.getElementById('targetProgressBar');
+      if (targetProgressEl) targetProgressEl.style.width = `${Math.min(100, targetProgressPct)}%`;
+
+      const statValEl = document.getElementById('statTotalValue');
+      if (statValEl) statValEl.textContent = `$${totalVal.toLocaleString()}`;
+
+      const statPnlEl = document.getElementById('statPnlValue');
+      if (statPnlEl) {
+        statPnlEl.textContent = `${pnlPrefix}$${unrealizedPnl.toLocaleString()}`;
+        statPnlEl.className = `text-lg sm:text-2xl lg:text-3xl font-extrabold mt-1 font-mono tracking-tight ${unrealizedPnl >= 0 ? 'text-rose-400' : 'text-emerald-400'}`;
+      }
+
+      const statRoiEl = document.getElementById('statRoiValue');
+      if (statRoiEl) {
+        statRoiEl.textContent = `報酬率 ${pnlPrefix}${unrealizedRoi}%`;
+        statRoiEl.className = `text-[11px] sm:text-xs font-bold mt-1 pt-1 border-t border-slate-800/60 ${unrealizedPnl >= 0 ? 'text-rose-300' : 'text-emerald-300'}`;
+      }
+
+      const statReturnEl = document.getElementById('statTotalReturn');
+      if (statReturnEl) {
+        statReturnEl.textContent = `含息總報 +${totalReturnWithDiv}%`;
+      }
+
+      // 4. 重繪所有持股卡片、表格與圖表
+      renderHoldings();
+      renderAllocationChart(currentAllocMode);
+      renderPnlBarChart();
+
+      // 5. 儲存最新行情至 localStorage 本地快取
+      try {
+        localStorage.setItem('myinvest_portfolio_cache', JSON.stringify({
+          baseDate: portfolioData.baseDate,
+          holdings: portfolioData.holdings.map(h => ({ code: h.code, marketPrice: h.marketPrice }))
+        }));
+      } catch (e) {
+        console.warn('localStorage cache failed:', e);
+      }
+    }
+
+    // 抓取台灣證券市場最新價格（支援手動點擊與每日背景自動排程）
+    async function refreshPrices(options = { isManual: false }) {
+      if (isRefreshing) return;
+      isRefreshing = true;
+
+      const isManual = options && options.isManual === true;
+      const desktopIcon = document.getElementById('desktopRefreshIcon');
+      const mobileIcon = document.getElementById('mobileRefreshIcon');
+      if (desktopIcon) desktopIcon.classList.add('animate-spin');
+      if (mobileIcon) mobileIcon.classList.add('animate-spin');
+
+      updateMarketStatusUI("同步最新行情中...");
+
+      if (isManual) {
+        showToast("⚡ 正在連線台灣金融資料庫，抓取最新價格...", "info", 6000);
+      }
+
+      // 回推 10 天作為起點，確保遇週末或連假休市時仍能抓到最近一個開盤日價格
+      const d = new Date();
+      d.setDate(d.getDate() - 10);
+      const startDate = d.toISOString().split('T')[0];
+
+      let updatedCount = 0;
+      let latestDateFound = null;
+
+      try {
+        const fetchPromises = portfolioData.holdings.map(async (h) => {
+          try {
+            const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${encodeURIComponent(h.code)}&start_date=${startDate}`;
+            const res = await fetch(url, { cache: 'no-cache' });
+            if (!res.ok) return null;
+            const json = await res.json();
+            if (json.data && json.data.length > 0) {
+              const latest = json.data[json.data.length - 1];
+              return { code: h.code, close: parseFloat(latest.close), date: latest.date };
+            }
+          } catch (e) {
+            console.warn(`Fetch error for ${h.code}:`, e);
+          }
+          return null;
+        });
+
+        const results = await Promise.allSettled(fetchPromises);
+
+        results.forEach(r => {
+          if (r.status === 'fulfilled' && r.value) {
+            const item = r.value;
+            const holding = portfolioData.holdings.find(h => h.code === item.code);
+            if (holding && !isNaN(item.close) && item.close > 0) {
+              holding.marketPrice = item.close;
+              updatedCount++;
+              if (!latestDateFound || item.date > latestDateFound) {
+                latestDateFound = item.date;
+              }
+            }
+          }
+        });
+
+        if (latestDateFound) {
+          portfolioData.baseDate = latestDateFound.replace(/-/g, '/');
+        }
+
+        recalculateAndRender();
+
+        // 記錄同步時間與日期
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const dateStr = now.toISOString().split('T')[0];
+        try {
+          localStorage.setItem('myinvest_last_sync_time', timeStr);
+          localStorage.setItem('myinvest_last_sync_date', dateStr);
+          localStorage.setItem('myinvest_last_sync_timestamp', Date.now().toString());
+        } catch (e) {}
+
+        updateMarketStatusUI();
+
+        const totalVal = portfolioData.holdings.reduce((sum, h) => sum + h.value, 0);
+        if (isManual) {
+          if (updatedCount > 0) {
+            showToast(`✅ 成功同步 ${updatedCount} 檔標的！最新交易日：${portfolioData.baseDate} (總現值 $${totalVal.toLocaleString()})`, "success", 3500);
+          } else {
+            showToast(`ℹ️ 標的價格已為最近交易日收盤價 (${portfolioData.baseDate})`, "info", 2500);
+          }
+        } else {
+          // 自動更新時以右上角微提示，不打擾使用者視線
+          const syncEl = document.getElementById('headerSyncTime');
+          if (syncEl) {
+            syncEl.classList.add('text-emerald-300', 'font-black');
+            setTimeout(() => syncEl.classList.remove('font-black'), 1500);
+          }
+        }
+      } catch (err) {
+        console.error("Refresh error:", err);
+        if (isManual) {
+          showToast("⚠️ 自動連線遇網路限制，已保留現有數據", "warning", 3000);
+        }
+        updateMarketStatusUI();
+      } finally {
+        isRefreshing = false;
+        if (desktopIcon) desktopIcon.classList.remove('animate-spin');
+        if (mobileIcon) mobileIcon.classList.remove('animate-spin');
+      }
+    }
+
+    // 初始化市場自動監控與每日重新抓取排程
+    function initMarketAutoScheduler() {
+      // 1. 頁面載入時檢查是否需要立即重新抓取
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const lastSyncDate = localStorage.getItem('myinvest_last_sync_date');
+      const lastSyncTimestamp = parseInt(localStorage.getItem('myinvest_last_sync_timestamp') || '0');
+      const marketInfo = getMarketScheduleInfo();
+      const minutesSinceLastSync = lastSyncTimestamp ? (Date.now() - lastSyncTimestamp) / (1000 * 60) : 9999;
+
+      let needImmediateFetch = false;
+
+      // 規則 A：新的一天首次開啟，必須重新抓取
+      if (!lastSyncDate || lastSyncDate !== todayStr) {
+        needImmediateFetch = true;
+      }
+      // 規則 B：開盤時間 (09:00 ~ 13:30)，若距離上次更新超過 2 分鐘，立即重新抓取
+      else if (marketInfo.isOpen && minutesSinceLastSync >= 2) {
+        needImmediateFetch = true;
+      }
+      // 規則 C：下午 1 點半收盤後，若距離上次抓取超過 15 分鐘，自動抓取今日最新收盤價
+      else if (marketInfo.isPostMarket && minutesSinceLastSync >= 15) {
+        needImmediateFetch = true;
+      }
+
+      if (needImmediateFetch) {
+        refreshPrices({ isManual: false });
+      }
+
+      // 2. 每 20 秒執行一次心跳檢查 (偵測開閉盤時段切換與定時刷新)
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = setInterval(() => {
+        updateMarketStatusUI();
+        const currentInfo = getMarketScheduleInfo();
+        const currentLastTs = parseInt(localStorage.getItem('myinvest_last_sync_timestamp') || '0');
+        const elapsedMinutes = currentLastTs ? (Date.now() - currentLastTs) / (1000 * 60) : 9999;
+
+        // 若在開盤時段 (09:00 ~ 13:30)，每 2 分鐘自動重新抓取一次
+        if (currentInfo.isOpen && elapsedMinutes >= 2) {
+          refreshPrices({ isManual: false });
+        }
+        // 若在下午 1 點半剛收盤 (13:30 ~ 14:00 之間)，若尚未更新收盤價則立即抓取
+        else if (currentInfo.isPostMarket && elapsedMinutes >= 15) {
+          refreshPrices({ isManual: false });
+        }
+      }, 20000);
+
+      // 3. 監聽分頁喚醒 (使用者切換回儀表板分頁時自動檢查)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          updateMarketStatusUI();
+          const info = getMarketScheduleInfo();
+          const lastTs = parseInt(localStorage.getItem('myinvest_last_sync_timestamp') || '0');
+          const elapsed = lastTs ? (Date.now() - lastTs) / (1000 * 60) : 9999;
+          if ((info.isOpen && elapsed >= 2) || (info.isPostMarket && elapsed >= 15)) {
+            refreshPrices({ isManual: false });
+          }
+        }
+      });
+    }
+
+    function showToast(msg, type = "info", duration = 2500) {
+      const existing = document.getElementById('myinvest_toast');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.id = 'myinvest_toast';
+      const bgColors = {
+        success: 'bg-emerald-600 border-emerald-400',
+        warning: 'bg-amber-600 border-amber-400',
+        info: 'bg-blue-600 border-blue-400'
+      };
+      const colorCls = bgColors[type] || bgColors.info;
+      toast.className = `fixed bottom-5 right-5 ${colorCls} text-white text-xs sm:text-sm font-bold px-4 py-2.5 rounded-xl shadow-2xl z-50 flex items-center space-x-2 transition-all border`;
+      toast.innerHTML = `<span>${msg}</span>`;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentNode) toast.remove();
+      }, duration);
+    }
+
+    // 視窗縮放時自適應調整
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const isMobileNow = window.innerWidth < 768;
+        if (allocChartInstance) {
+          allocChartInstance.options.plugins.legend.position = isMobileNow ? 'bottom' : 'right';
+          allocChartInstance.update();
+        }
+      }, 250);
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // 根據裝置寬度設定預設檢視
+      setViewMode(window.innerWidth < 768 ? 'cards' : 'table');
+
+      // 嘗試載入先前已刷新儲存的最新收盤行情快取
+      try {
+        const cached = localStorage.getItem('myinvest_portfolio_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && Array.isArray(parsed.holdings)) {
+            if (parsed.baseDate) portfolioData.baseDate = parsed.baseDate;
+            parsed.holdings.forEach(ch => {
+              const h = portfolioData.holdings.find(x => x.code === ch.code);
+              if (h && ch.marketPrice) h.marketPrice = ch.marketPrice;
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load portfolio cache:', e);
+      }
+
+      recalculateAndRender();
+      renderDividendHistoryTable();
+      renderMonthlySchedule();
+      calculateTax(5);
+
+      // 初始化字級設定 (從 localStorage 讀取或預設 1)
+      let initialLevel = 1;
+      try {
+        const saved = localStorage.getItem('myinvest_font_level');
+        if (saved) initialLevel = parseInt(saved) || 1;
+      } catch (e) {}
+      setFontLevel(initialLevel);
+
+      // 初始化市場狀態顯示與全自動每日/定時排程引擎
+      updateMarketStatusUI();
+      initMarketAutoScheduler();
+
+      // 監聽點擊彈窗外部以關閉
+      const fontSizeModal = document.getElementById('fontSizeModal');
+      if (fontSizeModal) {
+        fontSizeModal.addEventListener('click', (e) => {
+          if (e.target === fontSizeModal) {
+            toggleFontSizeModal(false);
+          }
+        });
+      }
+
+      // 監聽鍵盤 ESC 鍵以關閉彈窗
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          toggleFontSizeModal(false);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
